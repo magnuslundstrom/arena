@@ -98,6 +98,80 @@ describe("authoritative match simulation", () => {
     ]).state;
     expect(state.players.a!.x).toBe(250);
   });
+  it("allows Ice Block to be canceled early", () => {
+    let state = createMatch(roster, 42);
+    state = advanceTick(state, [
+      {
+        playerId: "a",
+        sequence: 0,
+        targetTick: 1,
+        kind: "ability",
+        abilityId: "ice-block",
+      },
+    ]).state;
+    expect(state.players.a!.statuses.immunity).toBeGreaterThan(state.tick);
+
+    state = advanceTick(state, [
+      {
+        playerId: "a",
+        sequence: 1,
+        targetTick: 2,
+        kind: "cancel-aura",
+        abilityId: "ice-block",
+      },
+    ]).state;
+    expect(state.players.a!.statuses.immunity).toBe(0);
+    expect(state.events.at(-1)?.text).toBe("A canceled Ice Block");
+  });
+  it("regenerates ten percent of maximum health each second while Polymorphed", () => {
+    let state = createMatch(roster, 42);
+    state = {
+      ...state,
+      players: {
+        ...state.players,
+        a: { ...state.players.a!, x: 400, y: 600 },
+        c: {
+          ...state.players.c!,
+          x: 600,
+          y: 600,
+          health: 1000,
+          statuses: {},
+        },
+      },
+    };
+    state = advanceTick(state, [
+      {
+        playerId: "a",
+        sequence: 0,
+        targetTick: 1,
+        kind: "ability",
+        abilityId: "polymorph",
+        targetId: "c",
+      },
+    ]).state;
+    for (let i = 0; i < 45; i++) state = advanceTick(state, []).state;
+    expect(state.players.c!.health).toBe(1000);
+    for (let i = 0; i < 29; i++) state = advanceTick(state, []).state;
+    expect(state.players.c!.health).toBe(1000);
+    state = advanceTick(state, []).state;
+    expect(state.players.c!.health).toBe(1220);
+    expect(state.events.at(-1)?.text).toBe("Polymorph regenerated 220");
+
+    state = advanceTick(state, [
+      {
+        playerId: "a",
+        sequence: 1,
+        targetTick: state.tick + 1,
+        kind: "ability",
+        abilityId: "fire-blast",
+        targetId: "c",
+      },
+    ]).state;
+    expect(state.players.c!.statuses.polymorph).toBeUndefined();
+    const healthAfterBreak = state.players.c!.health;
+    for (let i = 0; i < 40; i++) state = advanceTick(state, []).state;
+    expect(state.players.c!.health).toBe(healthAfterBreak);
+  });
   it("Renew heals on scheduled ticks instead of instantly", () => {
     let state = createMatch(roster, 42);
     state = {

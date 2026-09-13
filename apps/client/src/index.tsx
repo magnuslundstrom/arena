@@ -45,6 +45,7 @@ function App() {
   const [state, setState] = createSignal<MatchState>();
   const [connection, setConnection] = createSignal("Offline");
   let sequence = 0;
+  let lastIceBlockTap = 0;
   const held = new Set<string>();
   const self = createMemo(() => state()?.players[playerId() ?? ""]);
   const abilities = createMemo(() =>
@@ -169,6 +170,15 @@ function App() {
       if (index >= 0 && index < abilities().length) {
         event.preventDefault();
         const ability = abilities()[index];
+        if (ability?.id === "ice-block") {
+          const now = performance.now();
+          if (now - lastIceBlockTap <= 450) {
+            send({ type: "cancel-aura", abilityId: "ice-block" });
+            lastIceBlockTap = 0;
+            return;
+          }
+          lastIceBlockTap = now;
+        }
         if (ability) useAbility(ability.id);
       }
     };

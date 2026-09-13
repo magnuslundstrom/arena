@@ -125,6 +125,12 @@ sockets.on("connection", (socket) => {
     if (intent.type === "move")
       pending.push({ ...base, kind: "move", x: intent.x, y: intent.y });
     else if (intent.type === "jump") pending.push({ ...base, kind: "jump" });
+    else if (intent.type === "cancel-aura")
+      pending.push({
+        ...base,
+        kind: "cancel-aura",
+        abilityId: intent.abilityId,
+      });
     else if (intent.type === "target")
       pending.push({ ...base, kind: "target", targetId: intent.targetId });
     else

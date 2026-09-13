@@ -24,6 +24,7 @@ Choose **Practice with bots** to play immediately with an allied healer and two 
 - Click a combatant: select a target
 - `Tab`: cycle enemy targets; unit frames also select targets
 - Abilities bind in order to `1`–`4`, `Q`, `E`, `R`, `T`, `S`, `F`, `G`, `Z`, `X`, `C`
+- Double-tap `G` while playing Frost Mage to cancel Ice Block early
 
 The arena uses Three.js with a following perspective camera, original geometric character models, animated legs, shadowed 3D pillars, and camera obstruction checks. Character positions and combat remain authoritative on the server; presentation smooths updates between snapshots.
 

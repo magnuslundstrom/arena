@@ -69,6 +69,7 @@ export interface PlayerState extends MatchPlayer {
   readonly comboPoints?: number;
   readonly comboTargetId?: string;
   readonly fearSourceId?: string;
+  readonly polymorphNextHealTick?: number;
   readonly diminishingReturns?: Readonly<
     Partial<Record<Status, { count: number; resetsAt: number }>>
   >;
@@ -113,6 +114,10 @@ export type SimulationCommand =
       readonly y: number;
     })
   | (CommandBase & { readonly kind: "jump" })
+  | (CommandBase & {
+      readonly kind: "cancel-aura";
+      readonly abilityId: "ice-block";
+    })
   | (CommandBase & { readonly kind: "target"; readonly targetId: string })
   | (CommandBase & {
       readonly kind: "ability";
@@ -188,6 +193,7 @@ export function advanceTick(
     });
   completeCasts(players, tick, events);
   moveFearedPlayers(players, tick, state.seed);
+  regeneratePolymorphedPlayers(players, tick, events);
   for (const player of Object.values(players)) {
     const hot = player.periodicHealing;
     if (!hot || hot.nextTick > tick || hot.ticksLeft <= 0 || player.health <= 0)
@@ -328,6 +334,39 @@ function controlled(player: PlayerState, tick: number) {
   );
 }
 
+function regeneratePolymorphedPlayers(
+  players: Record<string, PlayerState>,
+  tick: number,
+  events: CombatEvent[],
+) {
+  for (const player of Object.values(players)) {
+    if (
+      player.health <= 0 ||
+      (player.statuses.polymorph ?? 0) <= tick ||
+      (player.polymorphNextHealTick ?? Infinity) > tick
+    )
+      continue;
+    const amount = Math.min(
+      Math.round(SPECS[player.specId].maxHealth * 0.1),
+      SPECS[player.specId].maxHealth - player.health,
+    );
+    players[player.id] = {
+      ...player,
+      health: player.health + amount,
+      polymorphNextHealTick: tick + TICKS_PER_SECOND,
+    };
+    if (amount > 0)
+      events.push({
+        tick,
+        type: "heal",
+        targetId: player.id,
+        abilityId: "polymorph",
+        amount,
+        text: `Polymorph regenerated ${amount}`,
+      });
+  }
+}
+
 function moveFearedPlayers(
   players: Record<string, PlayerState>,
   tick: number,
@@ -390,6 +429,25 @@ function applyCommand(
 ) {
   const player = players[command.playerId];
   if (!player) return;
+  if (command.kind === "cancel-aura") {
+    if (
+      command.abilityId === "ice-block" &&
+      (player.statuses.immunity ?? 0) > tick
+    ) {
+      players[player.id] = {
+        ...player,
+        statuses: { ...player.statuses, immunity: 0 },
+      };
+      events.push({
+        tick,
+        type: "system",
+        sourceId: player.id,
+        abilityId: "ice-block",
+        text: `${player.name} canceled Ice Block`,
+      });
+    }
+    return;
+  }
   if ((player.statuses.immunity ?? 0) > tick) return;
   if (command.kind === "jump") {
     if (controlled(player, tick) || (player.jumpUntilTick ?? 0) > tick) return;
@@ -804,6 +862,9 @@ function applyControlStatus(
   players[target.id] = {
     ...target,
     ...(status === "fear" ? { fearSourceId: sourceId } : {}),
+    ...(status === "polymorph"
+      ? { polymorphNextHealTick: tick + TICKS_PER_SECOND }
+      : {}),
     ...(["silence", "stun", "fear", "polymorph"].includes(status)
       ? { cast: undefined }
       : {}),
