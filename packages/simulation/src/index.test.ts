@@ -176,6 +176,44 @@ describe("authoritative match simulation", () => {
       );
     }
   });
+  it("casts Frost Nova without a target, rooting and revealing every nearby enemy", () => {
+    let state = createMatch(roster, 42);
+    state = {
+      ...state,
+      players: {
+        ...state.players,
+        a: { ...state.players.a!, x: 400, y: 600 },
+        b: { ...state.players.b!, x: 450, y: 600 },
+        c: {
+          ...state.players.c!,
+          x: 600,
+          y: 600,
+          statuses: { stealth: 600 },
+        },
+        d: { ...state.players.d!, x: 700, y: 600 },
+      },
+    };
+    state = advanceTick(state, [
+      {
+        playerId: "a",
+        sequence: 0,
+        targetTick: 1,
+        kind: "ability",
+        abilityId: "frost-nova",
+      },
+    ]).state;
+
+    expect(state.players.a!.targetId).toBeUndefined();
+    expect(state.players.b!.statuses.root).toBeUndefined();
+    expect(state.players.c!.statuses.root).toBeGreaterThan(state.tick);
+    expect(state.players.d!.statuses.root).toBeGreaterThan(state.tick);
+    expect(state.players.c!.statuses.stealth).toBeUndefined();
+    expect(
+      state.events.filter(
+        (event) => event.type === "control" && event.abilityId === "frost-nova",
+      ),
+    ).toHaveLength(2);
+  });
   it("requires and consumes combo points for a finisher", () => {
     let state = createMatch(roster, 42);
     state = {

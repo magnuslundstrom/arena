@@ -1,5 +1,5 @@
 export type SpecId = "frost-mage" | "subtlety-rogue" | "discipline-priest";
-export type AbilityTarget = "enemy" | "ally" | "self" | "point";
+export type AbilityTarget = "enemy" | "enemy-area" | "ally" | "self" | "point";
 export type EffectKind =
   | "damage"
   | "heal"
@@ -86,7 +86,7 @@ export const SPECS: Readonly<Record<SpecId, SpecDefinition>> = {
       a("polymorph", "Polymorph", "enemy", 1500, 0, 45, 160, [
         { kind: "polymorph", durationTicks: s(8) },
       ]),
-      a("frost-nova", "Frost Nova", "enemy", 700, s(21), 0, 140, [
+      a("frost-nova", "Frost Nova", "enemy-area", 700, s(21), 0, 140, [
         { kind: "root", durationTicks: s(5) },
       ]),
       a("blink", "Blink", "point", 650, s(15), 0, 100, [

@@ -508,14 +508,21 @@ function resolveTarget(
 ) {
   return ability.target === "self"
     ? players[player.id]
-    : players[targetId ?? player.targetId ?? ""];
+    : ability.target === "enemy-area"
+      ? players[player.id]
+      : players[targetId ?? player.targetId ?? ""];
 }
 function validTarget(
   player: PlayerState,
   target: PlayerState | undefined,
   ability: AbilityDefinition,
 ) {
-  if (ability.target === "point" || ability.target === "self") return true;
+  if (
+    ability.target === "point" ||
+    ability.target === "self" ||
+    ability.target === "enemy-area"
+  )
+    return true;
   return (
     !!target &&
     target.health > 0 &&
@@ -579,6 +586,35 @@ function resolveAbility(
     source = players[sourceId];
     target = players[targetId ?? sourceId];
     if (!source) return;
+    if (ability.target === "enemy-area") {
+      if (!["stun", "fear", "polymorph", "root"].includes(effect.kind))
+        continue;
+      for (const areaTarget of Object.values(players)) {
+        if (
+          areaTarget.team === source.team ||
+          areaTarget.health <= 0 ||
+          distance(source, areaTarget) > ability.range ||
+          (areaTarget.statuses.immunity ?? 0) > tick ||
+          (areaTarget.statuses.cloak ?? 0) > tick
+        )
+          continue;
+        players[areaTarget.id] = {
+          ...areaTarget,
+          statuses: { ...areaTarget.statuses, stealth: undefined },
+        };
+        applyControlStatus(
+          players,
+          sourceId,
+          areaTarget.id,
+          effect.kind as Status,
+          ability,
+          effect.durationTicks ?? 0,
+          tick,
+          events,
+        );
+      }
+      continue;
+    }
     if (effect.kind === "teleport") {
       const destination =
         point ??
@@ -729,46 +765,68 @@ function resolveAbility(
       ].includes(effect.kind)
     ) {
       const status = effect.kind as Status;
-      const isControl = ["stun", "fear", "polymorph", "root"].includes(status);
-      const prior = target.diminishingReturns?.[status];
-      const count = prior && prior.resetsAt > tick ? prior.count : 0;
-      if (isControl && count >= 3) continue;
-      const duration =
-        ability.id === "kidney-shot"
-          ? ((source.comboPoints ?? 1) + 1) * 30
-          : (effect.durationTicks ?? 0);
-      const until = tick + Math.floor(duration / (isControl ? 2 ** count : 1));
-      players[target.id] = {
-        ...target,
-        ...(status === "fear" ? { fearSourceId: sourceId } : {}),
-        ...(["silence", "stun", "fear", "polymorph"].includes(status)
-          ? { cast: undefined }
-          : {}),
-        ...(isControl
-          ? {
-              diminishingReturns: {
-                ...target.diminishingReturns,
-                [status]: { count: count + 1, resetsAt: until + 450 },
-              },
-            }
-          : {}),
-        statuses: {
-          ...target.statuses,
-          [status]: until,
-        },
-      };
-      if (ability.id === "kidney-shot")
-        players[sourceId] = { ...players[sourceId]!, comboPoints: 0 };
-      events.push({
-        tick,
-        type: "control",
+      applyControlStatus(
+        players,
         sourceId,
-        targetId: target.id,
-        abilityId: ability.id,
-        text: `${target.name}: ${status}`,
-      });
+        target.id,
+        status,
+        ability,
+        effect.durationTicks ?? 0,
+        tick,
+        events,
+      );
     }
   }
+}
+
+function applyControlStatus(
+  players: Record<string, PlayerState>,
+  sourceId: string,
+  targetId: string,
+  status: Status,
+  ability: AbilityDefinition,
+  baseDuration: number,
+  tick: number,
+  events: CombatEvent[],
+) {
+  const source = players[sourceId];
+  const target = players[targetId];
+  if (!source || !target) return;
+  const isControl = ["stun", "fear", "polymorph", "root"].includes(status);
+  const prior = target.diminishingReturns?.[status];
+  const count = prior && prior.resetsAt > tick ? prior.count : 0;
+  if (isControl && count >= 3) return;
+  const duration =
+    ability.id === "kidney-shot"
+      ? ((source.comboPoints ?? 1) + 1) * 30
+      : baseDuration;
+  const until = tick + Math.floor(duration / (isControl ? 2 ** count : 1));
+  players[target.id] = {
+    ...target,
+    ...(status === "fear" ? { fearSourceId: sourceId } : {}),
+    ...(["silence", "stun", "fear", "polymorph"].includes(status)
+      ? { cast: undefined }
+      : {}),
+    ...(isControl
+      ? {
+          diminishingReturns: {
+            ...target.diminishingReturns,
+            [status]: { count: count + 1, resetsAt: until + 450 },
+          },
+        }
+      : {}),
+    statuses: { ...target.statuses, [status]: until },
+  };
+  if (ability.id === "kidney-shot")
+    players[sourceId] = { ...players[sourceId]!, comboPoints: 0 };
+  events.push({
+    tick,
+    type: "control",
+    sourceId,
+    targetId: target.id,
+    abilityId: ability.id,
+    text: `${target.name}: ${status}`,
+  });
 }
 function regenerate(players: Record<string, PlayerState>) {
   for (const player of Object.values(players)) {
