@@ -17,6 +17,23 @@ import { type MatchState, type PlayerState } from "@arena/simulation";
 import "./styles.css";
 import { mountArena, cameraHeading } from "./arena3d";
 
+const ABILITY_BINDS = [
+  "1",
+  "2",
+  "3",
+  "4",
+  "q",
+  "e",
+  "r",
+  "t",
+  "s",
+  "f",
+  "g",
+  "z",
+  "x",
+  "c",
+] as const;
+
 function App() {
   const [specId, setSpecId] = createSignal<SpecId>("frost-mage");
   const [name, setName] = createSignal(
@@ -129,7 +146,8 @@ function App() {
     const keydown = (event: KeyboardEvent) => {
       if (["INPUT", "TEXTAREA"].includes((event.target as HTMLElement).tagName))
         return;
-      held.add(event.key.toLowerCase());
+      const key = event.key.toLowerCase();
+      if (["w", "a", "d", "arrowdown"].includes(key)) held.add(key);
       if (event.key === "Tab") {
         event.preventDefault();
         const me = self();
@@ -145,13 +163,11 @@ function App() {
         if (!event.repeat) send({ type: "jump" });
       }
       if (event.repeat) return;
-      const index =
-        event.key.toLowerCase() === "q"
-          ? 10
-          : event.key === "0"
-            ? 9
-            : Number(event.key) - 1;
+      const index = ABILITY_BINDS.indexOf(
+        key as (typeof ABILITY_BINDS)[number],
+      );
       if (index >= 0 && index < abilities().length) {
+        event.preventDefault();
         const ability = abilities()[index];
         if (ability) useAbility(ability.id);
       }
@@ -165,7 +181,7 @@ function App() {
     const movement = window.setInterval(() => {
       if (!self() || state()?.phase !== "running") return;
       const x = (held.has("d") ? 1 : 0) - (held.has("a") ? 1 : 0);
-      const y = (held.has("s") ? 1 : 0) - (held.has("w") ? 1 : 0);
+      const y = (held.has("arrowdown") ? 1 : 0) - (held.has("w") ? 1 : 0);
       if (x || y) {
         const yaw = cameraHeading.yaw;
         send({
@@ -240,8 +256,8 @@ function Lobby(props: {
       <p class="eyebrow">REAL-TIME 2V2</p>
       <h1>Enter the arena.</h1>
       <p>
-        Choose a spec and practice with bots, or join a four-player match. WASD
-        moves, click selects, and 1–0 casts.
+        Choose a spec and practice with bots, or join a four-player match. W/A/D
+        moves, click selects, and the action bar shows every combat bind.
       </p>
       <label>
         Combatant name
@@ -359,7 +375,8 @@ function Game(props: {
         aria-label="Third-person arena: hold right mouse to orbit; wheel to zoom"
       />
       <div class="camera-help">
-        WASD move · Space jump · Right-drag camera · Scroll zoom · Tab target
+        W forward · A/D strafe · ↓ back · Space jump · Right-drag camera · Tab
+        target
       </div>
       <Show when={props.state?.phase === "waiting"}>
         <div class="overlay">
@@ -519,9 +536,7 @@ function ActionBar(props: {
                 }
                 onClick={() => props.onUse(ability.id)}
               >
-                <kbd>
-                  {index() === 10 ? "Q" : index() === 9 ? 0 : index() + 1}
-                </kbd>
+                <kbd>{ABILITY_BINDS[index()]?.toUpperCase() ?? "—"}</kbd>
                 <span>{ability.name}</span>
                 <Show when={remaining() > 0}>
                   <em>{(remaining() / 30).toFixed(1)}</em>
