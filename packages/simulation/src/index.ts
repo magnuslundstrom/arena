@@ -68,6 +68,7 @@ export interface PlayerState extends MatchPlayer {
   };
   readonly comboPoints?: number;
   readonly comboTargetId?: string;
+  readonly fearSourceId?: string;
   readonly diminishingReturns?: Readonly<
     Partial<Record<Status, { count: number; resetsAt: number }>>
   >;
@@ -186,6 +187,7 @@ export function advanceTick(
       return true;
     });
   completeCasts(players, tick, events);
+  moveFearedPlayers(players, tick, state.seed);
   for (const player of Object.values(players)) {
     const hot = player.periodicHealing;
     if (!hot || hot.nextTick > tick || hot.ticksLeft <= 0 || player.health <= 0)
@@ -324,6 +326,60 @@ function controlled(player: PlayerState, tick: number) {
   return (["stun", "fear", "polymorph"] as const).some(
     (status) => (player.statuses[status] ?? 0) > tick,
   );
+}
+
+function moveFearedPlayers(
+  players: Record<string, PlayerState>,
+  tick: number,
+  seed: number,
+) {
+  for (const player of Object.values(players)) {
+    if (
+      player.health <= 0 ||
+      (player.statuses.fear ?? 0) <= tick ||
+      (player.statuses.stun ?? 0) > tick ||
+      (player.statuses.polymorph ?? 0) > tick
+    )
+      continue;
+    const source = players[player.fearSourceId ?? ""];
+    const fallbackAngle =
+      ((seed + tick * 17 + hashString(player.id)) % 628) / 100;
+    const awayAngle = source
+      ? Math.atan2(player.y - source.y, player.x - source.x)
+      : fallbackAngle;
+    const angle =
+      awayAngle + Math.sin((tick + hashString(player.id)) / 18) * 0.7;
+    const speed = SPECS[player.specId].speed * 1.08;
+    const attempts = [0, Math.PI / 3, -Math.PI / 3, Math.PI / 2, -Math.PI / 2];
+    for (const turn of attempts) {
+      const destination = {
+        x: Math.round(
+          clamp(
+            player.x + Math.cos(angle + turn) * speed,
+            35,
+            ARENA_WIDTH - 35,
+          ),
+        ),
+        y: Math.round(
+          clamp(
+            player.y + Math.sin(angle + turn) * speed,
+            35,
+            ARENA_HEIGHT - 35,
+          ),
+        ),
+      };
+      if (!walkable(destination)) continue;
+      players[player.id] = { ...player, ...destination, cast: undefined };
+      break;
+    }
+  }
+}
+
+function hashString(value: string) {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++)
+    hash = (hash * 31 + value.charCodeAt(i)) | 0;
+  return Math.abs(hash);
 }
 
 function applyCommand(
@@ -684,6 +740,7 @@ function resolveAbility(
       const until = tick + Math.floor(duration / (isControl ? 2 ** count : 1));
       players[target.id] = {
         ...target,
+        ...(status === "fear" ? { fearSourceId: sourceId } : {}),
         ...(["silence", "stun", "fear", "polymorph"].includes(status)
           ? { cast: undefined }
           : {}),

@@ -5,6 +5,38 @@ import { createSpellEffects, spellColor } from "./spell-effects";
 
 export const cameraHeading = { yaw: -Math.PI / 2 };
 
+function createStatusIcon(symbol: string, color: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const context = canvas.getContext("2d")!;
+  context.fillStyle = "rgba(13, 10, 22, 0.82)";
+  context.beginPath();
+  context.arc(64, 64, 48, 0, Math.PI * 2);
+  context.fill();
+  context.strokeStyle = color;
+  context.lineWidth = 8;
+  context.stroke();
+  context.font = "900 70px Arial, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillStyle = color;
+  context.fillText(symbol, 64, 66);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    }),
+  );
+  sprite.scale.set(0.85, 0.85, 1);
+  sprite.renderOrder = 15;
+  return sprite;
+}
+
 /** Presentation only: positions and combat always come from the server. */
 export function mountArena(
   canvas: HTMLCanvasElement,
@@ -104,12 +136,16 @@ export function mountArena(
     string,
     {
       group: THREE.Group;
+      humanoid: THREE.Group;
+      sheep: THREE.Group;
       legs: THREE.Mesh[];
       ring: THREE.Mesh;
       bar: THREE.Sprite;
       arms: THREE.Group[];
       glow: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
       aura: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
+      fearIcon: THREE.Sprite;
+      stunIcon: THREE.Sprite;
     }
   >();
   const effects = createSpellEffects(scene);
@@ -202,6 +238,8 @@ export function mountArena(
           const group = new THREE.Group();
           group.userData.playerId = p.id;
           scene.add(group);
+          const humanoid = new THREE.Group();
+          group.add(humanoid);
           const cloth = new THREE.MeshStandardMaterial({
             color: SPECS[p.specId].color,
             roughness: 0.65,
@@ -213,7 +251,7 @@ export function mountArena(
             0,
             1.4,
             0,
-            group,
+            humanoid,
           );
           mesh(
             new THREE.SphereGeometry(0.33, 12, 10),
@@ -221,7 +259,7 @@ export function mountArena(
             0,
             2.22,
             0,
-            group,
+            humanoid,
           );
           const legs = [-0.24, 0.24].map((x) =>
             mesh(
@@ -230,13 +268,13 @@ export function mountArena(
               x,
               0.48,
               0,
-              group,
+              humanoid,
             ),
           );
           const arms = [-0.65, 0.65].map((x) => {
             const pivot = new THREE.Group();
             pivot.position.set(x, 1.85, 0);
-            group.add(pivot);
+            humanoid.add(pivot);
             mesh(
               new THREE.BoxGeometry(0.3, 0.85, 0.35),
               cloth,
@@ -257,7 +295,7 @@ export function mountArena(
             }),
           );
           glow.position.set(0, 1.7, 0.95);
-          group.add(glow);
+          humanoid.add(glow);
           const aura = new THREE.Mesh(
             new THREE.SphereGeometry(1.15, 20, 14),
             new THREE.MeshBasicMaterial({
@@ -285,8 +323,55 @@ export function mountArena(
             0.8,
             1.3,
             0.2,
-            group,
+            humanoid,
           );
+          const sheep = new THREE.Group();
+          sheep.visible = false;
+          group.add(sheep);
+          const wool = new THREE.MeshStandardMaterial({
+            color: 0xf4f0dc,
+            roughness: 1,
+          });
+          const sheepDark = new THREE.MeshStandardMaterial({
+            color: 0x3c3540,
+            roughness: 0.85,
+          });
+          mesh(new THREE.SphereGeometry(0.68, 12, 10), wool, 0, 1.05, 0, sheep);
+          for (const x of [-0.42, 0, 0.42])
+            mesh(
+              new THREE.SphereGeometry(0.43, 10, 8),
+              wool,
+              x,
+              1.2 + (x === 0 ? 0.18 : 0),
+              0,
+              sheep,
+            );
+          mesh(
+            new THREE.SphereGeometry(0.34, 10, 8),
+            sheepDark,
+            0,
+            1.25,
+            0.7,
+            sheep,
+          );
+          for (const x of [-0.38, 0.38])
+            for (const z of [-0.28, 0.28])
+              mesh(
+                new THREE.BoxGeometry(0.16, 0.62, 0.16),
+                sheepDark,
+                x,
+                0.48,
+                z,
+                sheep,
+              );
+          const fearIcon = createStatusIcon("☠", "#cf7cff");
+          fearIcon.position.set(0, 3.8, 0);
+          fearIcon.visible = false;
+          group.add(fearIcon);
+          const stunIcon = createStatusIcon("★", "#ffe16b");
+          stunIcon.position.set(0, 3.8, 0);
+          stunIcon.visible = false;
+          group.add(stunIcon);
           const ring = mesh(
             new THREE.TorusGeometry(0.9, 0.045, 8, 40),
             new THREE.MeshBasicMaterial({ color: 0xffdf79 }),
@@ -306,9 +391,25 @@ export function mountArena(
           group.add(bar);
           group.position.set(p.x / 25, 0, p.y / 25);
           group.rotation.y = p.team === 0 ? Math.PI / 2 : -Math.PI / 2;
-          unit = { group, legs, ring, bar, arms, glow, aura };
+          unit = {
+            group,
+            humanoid,
+            sheep,
+            legs,
+            ring,
+            bar,
+            arms,
+            glow,
+            aura,
+            fearIcon,
+            stunIcon,
+          };
           units.set(p.id, unit);
         }
+        const polymorphed =
+          p.health > 0 && (p.statuses.polymorph ?? 0) > state.tick;
+        const feared = p.health > 0 && (p.statuses.fear ?? 0) > state.tick;
+        const stunned = p.health > 0 && (p.statuses.stun ?? 0) > state.tick;
         const jumping =
           p.jumpStartedTick !== undefined &&
           p.jumpUntilTick !== undefined &&
@@ -326,12 +427,28 @@ export function mountArena(
         else unit.group.position.lerp(destination, 1 - Math.exp(-18 * dt));
         if (motion.length() > 0.02)
           unit.group.rotation.y = Math.atan2(motion.x, motion.z);
+        unit.humanoid.visible = !polymorphed;
+        unit.humanoid.position.y = stunned ? -0.12 : 0;
+        unit.sheep.visible = polymorphed;
+        unit.sheep.position.y = polymorphed ? Math.sin(now * 0.009) * 0.08 : 0;
+        unit.sheep.rotation.y = Math.sin(now * 0.004) * 0.12;
+        unit.fearIcon.visible = feared;
+        unit.fearIcon.position.x = Math.sin(now * 0.01) * 0.22;
+        unit.fearIcon.position.y = 3.75 + Math.sin(now * 0.013) * 0.12;
+        unit.stunIcon.visible = stunned;
+        unit.stunIcon.position.x = Math.sin(now * 0.014) * 0.32;
+        unit.stunIcon.position.y = 3.7 + Math.cos(now * 0.014) * 0.12;
+        unit.stunIcon.material.rotation = now * 0.003;
         unit.legs.forEach((leg, i) => {
-          leg.rotation.x = jumping
-            ? 0.65 + i * -0.18
-            : motion.length() > 0.02
-              ? Math.sin(now * 0.012 + i * Math.PI) * 0.55
-              : 0;
+          leg.rotation.x = stunned
+            ? i === 0
+              ? 0.18
+              : -0.18
+            : jumping
+              ? 0.65 + i * -0.18
+              : motion.length() > 0.02
+                ? Math.sin(now * 0.012 + i * Math.PI) * 0.55
+                : 0;
         });
         unit.group.rotation.z = p.health <= 0 ? Math.PI / 2 : 0;
         unit.ring.visible = me?.targetId === p.id || p.id === me?.id;
@@ -340,15 +457,25 @@ export function mountArena(
         const elapsed = (now - (effects.gestures.get(p.id) ?? -10000)) / 1000;
         const release = elapsed < 0.4 ? Math.sin((elapsed / 0.4) * Math.PI) : 0;
         unit.arms.forEach((arm, i) => {
-          arm.rotation.x = casting
-            ? -1.5 + Math.sin(now * 0.008 + i) * 0.12
-            : -release * 1.8;
-          arm.rotation.z = casting ? (i === 0 ? -0.25 : 0.25) : 0;
+          arm.rotation.x = stunned
+            ? -0.35
+            : casting
+              ? -1.5 + Math.sin(now * 0.008 + i) * 0.12
+              : -release * 1.8;
+          arm.rotation.z = stunned
+            ? i === 0
+              ? -0.85
+              : 0.85
+            : casting
+              ? i === 0
+                ? -0.25
+                : 0.25
+              : 0;
         });
         const target = state.players[p.cast?.targetId ?? p.targetId ?? ""];
         if ((casting || release > 0) && target)
           unit.group.rotation.y = Math.atan2(target.x - p.x, target.y - p.y);
-        unit.glow.visible = casting;
+        unit.glow.visible = casting && !polymorphed;
         unit.glow.material.color.setHex(spellColor(p.cast?.abilityId ?? ""));
         unit.glow.scale.setScalar(0.8 + Math.sin(now * 0.012) * 0.25);
         unit.aura.visible =
@@ -406,7 +533,10 @@ export function mountArena(
         const materials = Array.isArray(o.material) ? o.material : [o.material];
         materials.forEach((m) => m.dispose());
       }
-      if (o instanceof THREE.Sprite) o.material.dispose();
+      if (o instanceof THREE.Sprite) {
+        o.material.map?.dispose();
+        o.material.dispose();
+      }
     });
     renderer.dispose();
   };

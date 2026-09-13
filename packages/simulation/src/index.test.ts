@@ -36,6 +36,36 @@ describe("authoritative match simulation", () => {
     expect(result.x).toBeGreaterThan(250);
     expect(result.y).toBeGreaterThan(450);
   });
+  it("forces feared players to flee from the caster instead of accepting movement", () => {
+    let state = createMatch(roster, 42);
+    state = {
+      ...state,
+      players: {
+        ...state.players,
+        b: { ...state.players.b!, x: 400, y: 450 },
+        c: { ...state.players.c!, x: 470, y: 450, statuses: {} },
+      },
+    };
+    state = advanceTick(state, [
+      {
+        playerId: "b",
+        sequence: 0,
+        targetTick: 1,
+        kind: "ability",
+        abilityId: "psychic-scream",
+        targetId: "c",
+      },
+    ]).state;
+    const firstFearedX = state.players.c!.x;
+    expect(state.players.c!.statuses.fear).toBeGreaterThan(state.tick);
+    expect(state.players.c!.fearSourceId).toBe("b");
+    expect(firstFearedX).toBeGreaterThan(470);
+
+    state = advanceTick(state, [
+      { playerId: "c", sequence: 0, targetTick: 2, kind: "move", x: -1, y: 0 },
+    ]).state;
+    expect(state.players.c!.x).toBeGreaterThan(firstFearedX);
+  });
   it("Ice Block prevents damage and actions for its duration", () => {
     let state = createMatch(roster, 42);
     state = {
