@@ -3,6 +3,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import { PILLARS, type MatchState } from "@arena/simulation";
 import { SPECS } from "@arena/game-content";
+import { mountArenaEnvironment } from "./arena-environment";
 import { createSpellEffects, spellColor } from "./spell-effects";
 
 export const cameraHeading = { yaw: -Math.PI / 2 };
@@ -107,9 +108,11 @@ export function mountArena(
   sun.shadow.camera.top = 35;
   sun.shadow.camera.bottom = -35;
   scene.add(sun);
-  const stone = new THREE.MeshStandardMaterial({
-    color: 0x777b80,
-    roughness: 0.95,
+  const stone = new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    colorWrite: false,
   });
   function mesh(
     geometry: THREE.BufferGeometry,
@@ -128,15 +131,12 @@ export function mountArena(
   }
   mesh(
     new THREE.BoxGeometry(80, 1, 48),
-    new THREE.MeshStandardMaterial({ color: 0x6d665d, roughness: 1 }),
+    new THREE.MeshStandardMaterial({ color: 0x242729, roughness: 1 }),
     40,
     -0.5,
     24,
   );
-  const grid = new THREE.GridHelper(80, 40, 0x888477, 0x787369);
-  grid.position.set(40, 0.015, 24);
-  grid.scale.z = 0.6;
-  scene.add(grid);
+  const disposeEnvironment = mountArenaEnvironment(scene);
   for (const p of PILLARS) {
     mesh(
       new THREE.CylinderGeometry(p.radius / 25, p.radius / 25, 7, 12),
@@ -828,6 +828,7 @@ export function mountArena(
     disposed = true;
     cancelAnimationFrame(frame);
     resize.disconnect();
+    disposeEnvironment();
     effects.dispose();
     for (const unit of units.values()) unit.mixer?.stopAllAction();
     canvas.removeEventListener("pointerdown", down);
