@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { PILLARS, type MatchState } from "@arena/simulation";
 import { SPECS } from "@arena/game-content";
+import { createSpellEffects, spellColor } from "./spell-effects";
 
 export const cameraHeading = { yaw: -Math.PI / 2 };
 
@@ -106,8 +107,12 @@ export function mountArena(
       legs: THREE.Mesh[];
       ring: THREE.Mesh;
       bar: THREE.Sprite;
+      arms: THREE.Group[];
+      glow: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
+      aura: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
     }
   >();
+  const effects = createSpellEffects(scene);
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   let pitch = 0.34,
@@ -228,15 +233,44 @@ export function mountArena(
               group,
             ),
           );
-          for (const x of [-0.65, 0.65])
+          const arms = [-0.65, 0.65].map((x) => {
+            const pivot = new THREE.Group();
+            pivot.position.set(x, 1.85, 0);
+            group.add(pivot);
             mesh(
               new THREE.BoxGeometry(0.3, 0.85, 0.35),
               cloth,
-              x,
-              1.45,
               0,
-              group,
+              -0.4,
+              0,
+              pivot,
             );
+            return pivot;
+          });
+          const glow = new THREE.Mesh(
+            new THREE.SphereGeometry(0.24, 12, 8),
+            new THREE.MeshBasicMaterial({
+              color: 0x78dfff,
+              transparent: true,
+              depthWrite: false,
+              blending: THREE.AdditiveBlending,
+            }),
+          );
+          glow.position.set(0, 1.7, 0.95);
+          group.add(glow);
+          const aura = new THREE.Mesh(
+            new THREE.SphereGeometry(1.15, 20, 14),
+            new THREE.MeshBasicMaterial({
+              color: 0x78dfff,
+              transparent: true,
+              opacity: 0.16,
+              wireframe: true,
+              depthWrite: false,
+            }),
+          );
+          aura.position.y = 1.25;
+          aura.scale.y = 1.35;
+          group.add(aura);
           mesh(
             new THREE.BoxGeometry(
               0.12,
@@ -272,7 +306,7 @@ export function mountArena(
           group.add(bar);
           group.position.set(p.x / 25, 0, p.y / 25);
           group.rotation.y = p.team === 0 ? Math.PI / 2 : -Math.PI / 2;
-          unit = { group, legs, ring, bar };
+          unit = { group, legs, ring, bar, arms, glow, aura };
           units.set(p.id, unit);
         }
         const destination = new THREE.Vector3(p.x / 25, 0, p.y / 25);
@@ -291,7 +325,36 @@ export function mountArena(
         unit.group.rotation.z = p.health <= 0 ? Math.PI / 2 : 0;
         unit.ring.visible = me?.targetId === p.id || p.id === me?.id;
         unit.bar.scale.x = (1.7 * p.health) / SPECS[p.specId].maxHealth;
+        const casting = !!p.cast && p.health > 0;
+        const elapsed = (now - (effects.gestures.get(p.id) ?? -10000)) / 1000;
+        const release = elapsed < 0.4 ? Math.sin((elapsed / 0.4) * Math.PI) : 0;
+        unit.arms.forEach((arm, i) => {
+          arm.rotation.x = casting
+            ? -1.5 + Math.sin(now * 0.008 + i) * 0.12
+            : -release * 1.8;
+          arm.rotation.z = casting ? (i === 0 ? -0.25 : 0.25) : 0;
+        });
+        const target = state.players[p.cast?.targetId ?? p.targetId ?? ""];
+        if ((casting || release > 0) && target)
+          unit.group.rotation.y = Math.atan2(target.x - p.x, target.y - p.y);
+        unit.glow.visible = casting;
+        unit.glow.material.color.setHex(spellColor(p.cast?.abilityId ?? ""));
+        unit.glow.scale.setScalar(0.8 + Math.sin(now * 0.012) * 0.25);
+        unit.aura.visible =
+          p.health > 0 &&
+          (p.shield > 0 ||
+            (p.statuses.immunity ?? 0) > state.tick ||
+            (p.statuses["damage-reduction"] ?? 0) > state.tick);
+        unit.aura.material.color.setHex(
+          (p.statuses.immunity ?? 0) > state.tick
+            ? 0xb3eeff
+            : p.specId === "discipline-priest"
+              ? 0xffdf7a
+              : 0x78dfff,
+        );
+        unit.aura.rotation.y = now * 0.0005;
       }
+    effects.update(state, now, dt);
     if (me) {
       const u = units.get(me.id)!;
       const focus = u.group.position.clone().add(new THREE.Vector3(0, 1.65, 0));
@@ -318,6 +381,7 @@ export function mountArena(
   return () => {
     cancelAnimationFrame(frame);
     resize.disconnect();
+    effects.dispose();
     canvas.removeEventListener("pointerdown", down);
     canvas.removeEventListener("pointermove", move);
     canvas.removeEventListener("pointerup", up);
