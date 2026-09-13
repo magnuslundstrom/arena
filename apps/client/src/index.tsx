@@ -277,6 +277,17 @@ function Game(props: {
   onTarget: (id: string) => void;
 }) {
   let canvas!: HTMLCanvasElement;
+  const player = () => props.state?.players[props.selfId ?? ""];
+  const target = () => props.state?.players[player()?.targetId ?? ""];
+  const friendlies = () =>
+    Object.values(props.state?.players ?? {}).filter(
+      (candidate) =>
+        candidate.id !== props.selfId && candidate.team === player()?.team,
+    );
+  const enemies = () =>
+    Object.values(props.state?.players ?? {}).filter(
+      (candidate) => candidate.team !== player()?.team,
+    );
   onMount(() => {
     onCleanup(
       mountArena(
@@ -289,44 +300,53 @@ function Game(props: {
   });
   return (
     <main class="game">
-      <div class="unit-frames">
-        <For each={Object.values(props.state?.players ?? {})}>
-          {(p) => (
-            <button
-              classList={{
-                targeted:
-                  props.state?.players[props.selfId ?? ""]?.targetId === p.id,
-              }}
-              onClick={() => props.onTarget(p.id)}
-            >
-              <b style={{ color: p.team === 0 ? "#79b7ff" : "#ff7f96" }}>
-                {p.name}
-              </b>
-              <span>
-                {SPECS[p.specId].name} · {p.health} HP
-              </span>
-              <meter min={0} max={SPECS[p.specId].maxHealth} value={p.health} />
-              <Show when={p.shield}>
-                <small>Absorb {p.shield}</small>
-              </Show>
-              <Show when={p.cast}>
-                {(cast) => (
-                  <small>
-                    {
-                      SPECS[p.specId].abilities.find(
-                        (a) => a.id === cast().abilityId,
-                      )?.name
-                    }{" "}
-                    ·{" "}
-                    {Math.max(
-                      0,
-                      (cast().completesAtTick - (props.state?.tick ?? 0)) / 30,
-                    ).toFixed(1)}
-                    s
-                  </small>
-                )}
-              </Show>
-            </button>
+      <div class="primary-frames">
+        <Show when={player()}>
+          {(current) => (
+            <UnitFrame
+              player={current()}
+              tick={props.state?.tick ?? 0}
+              label="Player"
+              large
+            />
+          )}
+        </Show>
+        <Show when={target()}>
+          {(current) => (
+            <UnitFrame
+              player={current()}
+              tick={props.state?.tick ?? 0}
+              label="Target"
+              large
+              targeted
+              onSelect={props.onTarget}
+            />
+          )}
+        </Show>
+      </div>
+      <div class="arena-frames friendly-frames">
+        <div class="frame-heading">Party</div>
+        <For each={friendlies()}>
+          {(current) => (
+            <UnitFrame
+              player={current}
+              tick={props.state?.tick ?? 0}
+              targeted={player()?.targetId === current.id}
+              onSelect={props.onTarget}
+            />
+          )}
+        </For>
+      </div>
+      <div class="arena-frames enemy-frames">
+        <div class="frame-heading">Enemies</div>
+        <For each={enemies()}>
+          {(current) => (
+            <UnitFrame
+              player={current}
+              tick={props.state?.tick ?? 0}
+              targeted={player()?.targetId === current.id}
+              onSelect={props.onTarget}
+            />
           )}
         </For>
       </div>
@@ -353,6 +373,98 @@ function Game(props: {
       </Show>
       <CombatLog events={props.state?.events ?? []} />
     </main>
+  );
+}
+
+function UnitFrame(props: {
+  player: PlayerState;
+  tick: number;
+  label?: string;
+  large?: boolean;
+  targeted?: boolean;
+  onSelect?: (id: string) => void;
+}) {
+  const spec = () => SPECS[props.player.specId];
+  const activeStatuses = () =>
+    Object.entries(props.player.statuses).filter(
+      ([, until]) => (until ?? 0) > props.tick,
+    );
+  const content = () => (
+    <>
+      <Show when={props.label}>
+        <small class="frame-label">{props.label}</small>
+      </Show>
+      <div class="frame-name">
+        <b>{props.player.name}</b>
+        <span>{spec().name}</span>
+      </div>
+      <div class="frame-resource health">
+        <i
+          style={{
+            width: `${(props.player.health / spec().maxHealth) * 100}%`,
+          }}
+        />
+        <span>
+          {props.player.health} / {spec().maxHealth}
+        </span>
+      </div>
+      <div class="frame-resource power">
+        <i
+          style={{ width: `${(props.player.mana / spec().maxMana) * 100}%` }}
+        />
+        <span>{props.player.mana}</span>
+      </div>
+      <div class="frame-effects">
+        <Show when={props.player.shield > 0}>
+          <em>Shield {props.player.shield}</em>
+        </Show>
+        <For each={activeStatuses()}>
+          {([status, until]) => (
+            <em>
+              {status} {(((until ?? 0) - props.tick) / 30).toFixed(1)}
+            </em>
+          )}
+        </For>
+      </div>
+      <Show when={props.player.cast}>
+        {(cast) => (
+          <div class="frame-cast">
+            <i
+              style={{
+                width: `${Math.max(0, 100 - ((cast().completesAtTick - props.tick) / (spec().abilities.find((ability) => ability.id === cast().abilityId)?.castTicks ?? 1)) * 100)}%`,
+              }}
+            />
+            <span>
+              {
+                spec().abilities.find(
+                  (ability) => ability.id === cast().abilityId,
+                )?.name
+              }
+            </span>
+          </div>
+        )}
+      </Show>
+    </>
+  );
+  return props.onSelect ? (
+    <button
+      class="unit-frame"
+      classList={{
+        large: props.large,
+        targeted: props.targeted,
+        dead: props.player.health <= 0,
+      }}
+      onClick={() => props.onSelect?.(props.player.id)}
+    >
+      {content()}
+    </button>
+  ) : (
+    <div
+      class="unit-frame"
+      classList={{ large: props.large, dead: props.player.health <= 0 }}
+    >
+      {content()}
+    </div>
   );
 }
 
