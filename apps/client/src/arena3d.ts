@@ -226,6 +226,7 @@ export function mountArena(
   }
   loadCharacter("frost-mage", "/models/undead-frost-mage/model.gltf");
   loadCharacter("subtlety-rogue", "/models/subtlety-rogue/model.gltf");
+  loadCharacter("discipline-priest", "/models/discipline-priest/model.gltf");
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   let pitch = 0.34,
@@ -727,12 +728,14 @@ export function mountArena(
         const release = elapsed < 0.4 ? Math.sin((elapsed / 0.4) * Math.PI) : 0;
         const rogueAttacking =
           p.specId === "subtlety-rogue" && release > 0 && p.health > 0;
+        const spellGesturing =
+          p.specId !== "subtlety-rogue" && release > 0 && p.health > 0;
         unit.mixer?.update(dt);
         playAnimation(
           unit,
           p.health <= 0
             ? "Death"
-            : casting
+            : casting || spellGesturing
               ? "Spell1"
               : stunned || incapacitated
                 ? "RecieveHit"
