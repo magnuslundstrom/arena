@@ -14,6 +14,19 @@ export const PILLARS = [
   { x: 1180, y: 850, radius: 105 },
 ] as const;
 
+export function canObservePlayer(
+  viewer: PlayerState,
+  candidate: PlayerState,
+  tick: number,
+  stealthDetectionRange: number,
+) {
+  return (
+    candidate.team === viewer.team ||
+    (candidate.statuses.stealth ?? 0) <= tick ||
+    distance(viewer, candidate) <= stealthDetectionRange
+  );
+}
+
 export function hasLineOfSight(a: Point, b: Point): boolean {
   const dx = b.x - a.x,
     dy = b.y - a.y;
@@ -251,7 +264,10 @@ export function botCommands(
     const player = state.players[id];
     if (!player || player.health <= 0) continue;
     const enemies = Object.values(state.players).filter(
-      (p) => p.team !== player.team && p.health > 0,
+      (p) =>
+        p.team !== player.team &&
+        p.health > 0 &&
+        canObservePlayer(player, p, state.tick, 0),
     );
     const enemy = enemies.sort(
       (a, b) => distance(player, a) - distance(player, b),
@@ -610,6 +626,7 @@ function completeCasts(
       !controlled(player, tick) &&
       validTarget(player, target, ability) &&
       target &&
+      (target.team === player.team || (target.statuses.stealth ?? 0) <= tick) &&
       distance(player, target) <= ability.range &&
       hasLineOfSight(player, target)
     )

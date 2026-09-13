@@ -5,6 +5,7 @@ import {
   createMatch,
   TICKS_PER_SECOND,
   type MatchPlayer,
+  type MatchState,
   type SimulationCommand,
 } from "./index.js";
 
@@ -257,6 +258,90 @@ describe("authoritative match simulation", () => {
     const first = run();
     expect(first.damage).toBeGreaterThan(5);
     expect(run()).toEqual(first);
+  });
+  it("prevents bots from targeting stealthed enemies outside detection range", () => {
+    const stealthRoster: MatchPlayer[] = [
+      { id: "rogue", name: "Rogue", team: 0, specId: "subtlety-rogue" },
+      { id: "priest", name: "Priest", team: 0, specId: "discipline-priest" },
+      { id: "bot", name: "Bot", team: 1, specId: "frost-mage" },
+      { id: "partner", name: "Partner", team: 1, specId: "subtlety-rogue" },
+    ];
+    const initial = createMatch(stealthRoster, 42);
+    let state: MatchState = {
+      ...initial,
+      players: {
+        ...initial.players,
+        rogue: {
+          ...initial.players.rogue!,
+          x: 600,
+          y: 600,
+          statuses: {},
+        },
+        priest: { ...initial.players.priest!, x: 900, y: 600 },
+        bot: { ...initial.players.bot!, x: 700, y: 600 },
+      },
+    };
+
+    const visibleCommands = botCommands(state, ["bot"]);
+    expect(
+      visibleCommands[0]?.kind === "ability"
+        ? visibleCommands[0].targetId
+        : undefined,
+    ).toBe("rogue");
+
+    state = advanceTick(state, [
+      {
+        playerId: "rogue",
+        sequence: 0,
+        targetTick: 1,
+        kind: "ability",
+        abilityId: "vanish",
+      },
+    ]).state;
+    const commands = botCommands(state, ["bot"]);
+    expect(commands).toHaveLength(1);
+    expect(
+      commands[0]?.kind === "ability" ? commands[0].targetId : undefined,
+    ).toBe("priest");
+  });
+  it("cancels a hostile cast when its target Vanishes before completion", () => {
+    let state = createMatch(roster, 42);
+    state = {
+      ...state,
+      players: {
+        ...state.players,
+        a: {
+          ...state.players.a!,
+          x: 500,
+          y: 600,
+          cast: {
+            abilityId: "frostbolt",
+            targetId: "c",
+            completesAtTick: 2,
+          },
+        },
+        c: {
+          ...state.players.c!,
+          x: 600,
+          y: 600,
+          statuses: {},
+        },
+      },
+    };
+    state = advanceTick(state, [
+      {
+        playerId: "c",
+        sequence: 0,
+        targetTick: 1,
+        kind: "ability",
+        abilityId: "vanish",
+      },
+    ]).state;
+    state = advanceTick(state, []).state;
+
+    expect(state.players.c!.health).toBe(2200);
+    expect(state.players.c!.statuses.stealth).toBeGreaterThan(state.tick);
+    expect(state.events).toHaveLength(0);
   });
   it("reduces repeated control duration and then grants immunity", () => {
     let state = createMatch(roster, 42);

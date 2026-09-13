@@ -12,6 +12,7 @@ import {
 import {
   advanceTick,
   botCommands,
+  canObservePlayer,
   createMatch,
   TICK_DURATION_MS,
   type MatchPlayer,
@@ -179,10 +180,7 @@ function broadcast() {
     const viewer = visible.players[player.id];
     const visiblePlayers = Object.fromEntries(
       Object.entries(visible.players).filter(
-        ([, p]) =>
-          p.team === viewer?.team ||
-          (p.statuses.stealth ?? 0) <= visible.tick ||
-          (viewer && Math.hypot(p.x - viewer.x, p.y - viewer.y) <= 160),
+        ([, p]) => !!viewer && canObservePlayer(viewer, p, visible.tick, 160),
       ),
     );
     const snapshot: ServerSnapshot<MatchState> = {
