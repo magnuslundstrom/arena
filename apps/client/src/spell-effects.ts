@@ -26,8 +26,60 @@ export function createSpellEffects(scene: THREE.Scene) {
     type: "bolt" | "particle" | "ring";
     color: number;
   }[] = [];
+  const combatText: {
+    sprite: THREE.Sprite;
+    targetId: string;
+    age: number;
+    life: number;
+    offsetX: number;
+  }[] = [];
   let consumedTick = -1;
   const gestures = new Map<string, number>();
+
+  function spawnCombatText(
+    targetId: string,
+    amount: number,
+    type: "damage" | "heal",
+    eventIndex: number,
+  ) {
+    if (amount <= 0 || combatText.length >= 40) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 128;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.font = "900 68px Arial, sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.lineJoin = "round";
+    context.lineWidth = 12;
+    context.strokeStyle = "rgba(20, 10, 8, 0.95)";
+    const label = type === "heal" ? `+${amount}` : String(amount);
+    context.strokeText(label, 128, 66);
+    context.fillStyle = type === "heal" ? "#63ef8b" : "#ffd45c";
+    context.fillText(label, 128, 66);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.minFilter = THREE.LinearFilter;
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(2.6, 1.3, 1);
+    sprite.renderOrder = 20;
+    root.add(sprite);
+    combatText.push({
+      sprite,
+      targetId,
+      age: 0,
+      life: 1.25,
+      offsetX: ((eventIndex % 3) - 1) * 0.42,
+    });
+  }
   function spawn(
     type: "bolt" | "particle" | "ring",
     start: THREE.Vector3,
@@ -85,7 +137,7 @@ export function createSpellEffects(scene: THREE.Scene) {
     gestures,
     update(state: MatchState | undefined, now: number, dt: number) {
       if (state) {
-        for (const event of state.events) {
+        for (const [eventIndex, event] of state.events.entries()) {
           if (event.tick <= consumedTick) continue;
           const source = state.players[event.sourceId ?? ""];
           const target = state.players[event.targetId ?? ""];
@@ -133,6 +185,17 @@ export function createSpellEffects(scene: THREE.Scene) {
             else if (!/bolt|lance|fire-blast|shadow-word-death/.test(id))
               burst(to, color);
           }
+          if (
+            (event.type === "damage" || event.type === "heal") &&
+            event.targetId &&
+            event.amount !== undefined
+          )
+            spawnCombatText(
+              event.targetId,
+              event.amount,
+              event.type,
+              eventIndex,
+            );
         }
         consumedTick = state.tick;
       }
@@ -154,9 +217,35 @@ export function createSpellEffects(scene: THREE.Scene) {
           if (effect.type === "bolt") burst(effect.end, effect.color);
         }
       }
+      for (let i = combatText.length - 1; i >= 0; i--) {
+        const text = combatText[i]!;
+        text.age += dt;
+        const t = Math.min(1, text.age / text.life);
+        const target = state?.players[text.targetId];
+        if (target)
+          text.sprite.position.set(
+            target.x / 25 + text.offsetX,
+            3.25 + Math.sin(t * Math.PI * 0.5) * 1.6,
+            target.y / 25,
+          );
+        text.sprite.material.opacity =
+          t < 0.72 ? 1 : 1 - (t - 0.72) / (1 - 0.72);
+        const pop = 1 + Math.sin(Math.min(1, t * 5) * Math.PI) * 0.18;
+        text.sprite.scale.set(2.6 * pop, 1.3 * pop, 1);
+        if (t >= 1 || !target) {
+          root.remove(text.sprite);
+          text.sprite.material.map?.dispose();
+          text.sprite.material.dispose();
+          combatText.splice(i, 1);
+        }
+      }
     },
     dispose() {
       for (const effect of active) effect.mesh.material.dispose();
+      for (const text of combatText) {
+        text.sprite.material.map?.dispose();
+        text.sprite.material.dispose();
+      }
       sphere.dispose();
       ring.dispose();
       scene.remove(root);
