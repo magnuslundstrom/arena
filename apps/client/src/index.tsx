@@ -349,6 +349,14 @@ function Game(props: {
               label="Target"
               large
               targeted
+              comboPoints={
+                player()?.specId === "subtlety-rogue" &&
+                player()?.comboTargetId === current().id
+                  ? (player()?.comboPoints ?? 0)
+                  : player()?.specId === "subtlety-rogue"
+                    ? 0
+                    : undefined
+              }
               onSelect={props.onTarget}
             />
           )}
@@ -413,6 +421,7 @@ function UnitFrame(props: {
   label?: string;
   large?: boolean;
   targeted?: boolean;
+  comboPoints?: number | undefined;
   onSelect?: (id: string) => void;
 }) {
   const spec = () => SPECS[props.player.specId];
@@ -445,6 +454,18 @@ function UnitFrame(props: {
         />
         <span>{props.player.mana}</span>
       </div>
+      <Show when={props.comboPoints !== undefined}>
+        <div
+          class="combo-points"
+          aria-label={`${props.comboPoints ?? 0} combo points`}
+        >
+          <For each={[0, 1, 2, 3, 4]}>
+            {(point) => (
+              <i classList={{ active: point < (props.comboPoints ?? 0) }} />
+            )}
+          </For>
+        </div>
+      </Show>
       <div class="frame-effects">
         <Show when={props.player.shield > 0}>
           <em>Shield {props.player.shield}</em>
@@ -513,9 +534,6 @@ function ActionBar(props: {
   return (
     <footer>
       <div class="self-bars">
-        <Show when={props.player.specId === "subtlety-rogue"}>
-          <span>Combo points: {props.player.comboPoints ?? 0}/5</span>
-        </Show>
         <b>
           {props.player.name} · {SPECS[props.player.specId].name}
         </b>

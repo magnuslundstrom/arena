@@ -150,7 +150,10 @@ export function createMatch(
       shield: 0,
       globalCooldownUntil: 0,
       cooldowns: {},
-      statuses: player.specId === "subtlety-rogue" ? { stealth: 600 } : {},
+      statuses:
+        player.specId === "subtlety-rogue"
+          ? { stealth: TICKS_PER_SECOND * 600 }
+          : {},
       lastSequence: -1,
     };
   }
@@ -531,7 +534,9 @@ function applyCommand(
     },
     statuses: {
       ...player.statuses,
-      ...(ability.target === "enemy" ? { stealth: 0 } : {}),
+      ...(ability.target === "enemy" && ability.id !== "shadowstep"
+        ? { stealth: 0 }
+        : {}),
     },
   };
   if (ability.castTicks > 0)
@@ -784,7 +789,7 @@ function resolveAbility(
             5,
             (source.comboTargetId === target.id
               ? (source.comboPoints ?? 0)
-              : 0) + 1,
+              : 0) + (ability.id === "cheap-shot" ? 2 : 1),
           ),
         };
       if (ability.id === "eviscerate")

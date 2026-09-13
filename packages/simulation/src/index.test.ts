@@ -123,6 +123,46 @@ describe("authoritative match simulation", () => {
     expect(state.players.a!.statuses.immunity).toBe(0);
     expect(state.events.at(-1)?.text).toBe("A canceled Ice Block");
   });
+  it("keeps Stealth through Shadowstep so Cheap Shot can open", () => {
+    let state = createMatch(roster, 42);
+    expect(state.players.c!.statuses.stealth).toBe(TICKS_PER_SECOND * 600);
+    state = {
+      ...state,
+      players: {
+        ...state.players,
+        a: { ...state.players.a!, x: 400, y: 600 },
+        c: { ...state.players.c!, x: 900, y: 600 },
+      },
+    };
+    state = advanceTick(state, [
+      {
+        playerId: "c",
+        sequence: 0,
+        targetTick: 1,
+        kind: "ability",
+        abilityId: "shadowstep",
+        targetId: "a",
+      },
+    ]).state;
+    expect(state.players.c!.statuses.stealth).toBeGreaterThan(state.tick);
+    expect(
+      Math.abs(state.players.c!.x - state.players.a!.x),
+    ).toBeLessThanOrEqual(180);
+    for (let i = 0; i < 30; i++) state = advanceTick(state, []).state;
+    state = advanceTick(state, [
+      {
+        playerId: "c",
+        sequence: 1,
+        targetTick: state.tick + 1,
+        kind: "ability",
+        abilityId: "cheap-shot",
+        targetId: "a",
+      },
+    ]).state;
+    expect(state.players.a!.statuses.stun).toBeGreaterThan(state.tick);
+    expect(state.players.c!.comboPoints).toBe(2);
+    expect(state.players.c!.comboTargetId).toBe("a");
+  });
   it("regenerates ten percent of maximum health each second while Polymorphed", () => {
     let state = createMatch(roster, 42);
     state = {
@@ -324,6 +364,44 @@ describe("authoritative match simulation", () => {
     ]).state;
     expect(state.players.a!.health).toBe(1460);
     expect(state.players.c!.comboPoints).toBe(0);
+  });
+  it("starts a fresh combo-point stack when generating on another target", () => {
+    let state = createMatch(roster, 42);
+    state = {
+      ...state,
+      players: {
+        ...state.players,
+        a: { ...state.players.a!, x: 400, y: 600 },
+        b: { ...state.players.b!, x: 600, y: 600 },
+        c: { ...state.players.c!, x: 500, y: 600, statuses: {} },
+      },
+    };
+    state = advanceTick(state, [
+      {
+        playerId: "c",
+        sequence: 0,
+        targetTick: 1,
+        kind: "ability",
+        abilityId: "hemorrhage",
+        targetId: "a",
+      },
+    ]).state;
+    expect(state.players.c!.comboTargetId).toBe("a");
+    expect(state.players.c!.comboPoints).toBe(1);
+
+    for (let i = 0; i < 30; i++) state = advanceTick(state, []).state;
+    state = advanceTick(state, [
+      {
+        playerId: "c",
+        sequence: 1,
+        targetTick: state.tick + 1,
+        kind: "ability",
+        abilityId: "hemorrhage",
+        targetId: "b",
+      },
+    ]).state;
+    expect(state.players.c!.comboTargetId).toBe("b");
+    expect(state.players.c!.comboPoints).toBe(1);
   });
   it("orders intent deterministically and rejects replayed sequences", () => {
     const command = (sequence: number): SimulationCommand => ({
