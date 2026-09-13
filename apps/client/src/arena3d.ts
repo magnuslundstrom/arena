@@ -146,6 +146,8 @@ export function mountArena(
       aura: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
       fearIcon: THREE.Sprite;
       stunIcon: THREE.Sprite;
+      rootIcon: THREE.Sprite;
+      rootIce: THREE.Group;
     }
   >();
   const effects = createSpellEffects(scene);
@@ -372,6 +374,46 @@ export function mountArena(
           stunIcon.position.set(0, 3.8, 0);
           stunIcon.visible = false;
           group.add(stunIcon);
+          const rootIcon = createStatusIcon("❄", "#8de8ff");
+          rootIcon.position.set(0, 3.8, 0);
+          rootIcon.visible = false;
+          group.add(rootIcon);
+          const rootIce = new THREE.Group();
+          rootIce.visible = false;
+          group.add(rootIce);
+          const ice = new THREE.MeshStandardMaterial({
+            color: 0x79ddff,
+            emissive: 0x164c77,
+            transparent: true,
+            opacity: 0.82,
+            roughness: 0.18,
+          });
+          for (let i = 0; i < 7; i++) {
+            const angle = (i / 7) * Math.PI * 2;
+            const shard = mesh(
+              new THREE.ConeGeometry(
+                0.18 + (i % 2) * 0.06,
+                0.8 + (i % 3) * 0.2,
+                5,
+              ),
+              ice,
+              Math.cos(angle) * 0.72,
+              0.38,
+              Math.sin(angle) * 0.72,
+              rootIce,
+            );
+            shard.rotation.z = Math.cos(angle) * 0.2;
+            shard.rotation.x = Math.sin(angle) * 0.2;
+          }
+          const frostRing = mesh(
+            new THREE.TorusGeometry(0.82, 0.09, 6, 30),
+            ice,
+            0,
+            0.08,
+            0,
+            rootIce,
+          );
+          frostRing.rotation.x = Math.PI / 2;
           const ring = mesh(
             new THREE.TorusGeometry(0.9, 0.045, 8, 40),
             new THREE.MeshBasicMaterial({ color: 0xffdf79 }),
@@ -403,6 +445,8 @@ export function mountArena(
             aura,
             fearIcon,
             stunIcon,
+            rootIcon,
+            rootIce,
           };
           units.set(p.id, unit);
         }
@@ -410,6 +454,7 @@ export function mountArena(
           p.health > 0 && (p.statuses.polymorph ?? 0) > state.tick;
         const feared = p.health > 0 && (p.statuses.fear ?? 0) > state.tick;
         const stunned = p.health > 0 && (p.statuses.stun ?? 0) > state.tick;
+        const rooted = p.health > 0 && (p.statuses.root ?? 0) > state.tick;
         const jumping =
           p.jumpStartedTick !== undefined &&
           p.jumpUntilTick !== undefined &&
@@ -439,6 +484,13 @@ export function mountArena(
         unit.stunIcon.position.x = Math.sin(now * 0.014) * 0.32;
         unit.stunIcon.position.y = 3.7 + Math.cos(now * 0.014) * 0.12;
         unit.stunIcon.material.rotation = now * 0.003;
+        unit.rootIcon.visible = rooted;
+        unit.rootIcon.position.x = feared || stunned ? -0.7 : 0;
+        unit.rootIcon.position.y = 3.72 + Math.sin(now * 0.008) * 0.08;
+        unit.rootIcon.material.rotation = Math.sin(now * 0.004) * 0.12;
+        unit.rootIce.visible = rooted;
+        unit.rootIce.position.y = -jumpHeight;
+        unit.rootIce.rotation.y = now * 0.00035;
         unit.legs.forEach((leg, i) => {
           leg.rotation.x = stunned
             ? i === 0
