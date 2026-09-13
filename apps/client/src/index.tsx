@@ -473,7 +473,8 @@ function UnitFrame(props: {
         <For each={activeStatuses()}>
           {([status, until]) => (
             <em>
-              {status} {(((until ?? 0) - props.tick) / 30).toFixed(1)}
+              {status === "incapacitate" ? "Gouge" : status}{" "}
+              {(((until ?? 0) - props.tick) / 30).toFixed(1)}
             </em>
           )}
         </For>

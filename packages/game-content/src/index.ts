@@ -7,6 +7,7 @@ export type EffectKind =
   | "stun"
   | "fear"
   | "polymorph"
+  | "incapacitate"
   | "root"
   | "silence"
   | "slow"
@@ -136,7 +137,7 @@ export const SPECS: Readonly<Record<SpecId, SpecDefinition>> = {
         { kind: "stun", durationTicks: s(5) },
       ]),
       a("gouge", "Gouge", "enemy", 180, s(10), 0, 30, [
-        { kind: "polymorph", durationTicks: s(4) },
+        { kind: "incapacitate", durationTicks: s(4) },
       ]),
       a("kick", "Kick", "enemy", 180, s(10), 0, 25, [
         { kind: "silence", durationTicks: s(3) },

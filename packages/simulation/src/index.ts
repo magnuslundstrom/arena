@@ -67,6 +67,7 @@ export type Status =
   | "stun"
   | "fear"
   | "polymorph"
+  | "incapacitate"
   | "root"
   | "silence"
   | "slow"
@@ -348,7 +349,7 @@ function compareCommands(a: SimulationCommand, b: SimulationCommand) {
   );
 }
 function controlled(player: PlayerState, tick: number) {
-  return (["stun", "fear", "polymorph"] as const).some(
+  return (["stun", "fear", "polymorph", "incapacitate"] as const).some(
     (status) => (player.statuses[status] ?? 0) > tick,
   );
 }
@@ -795,6 +796,7 @@ function resolveAbility(
         statuses: {
           ...target.statuses,
           polymorph: undefined,
+          incapacitate: undefined,
           stealth: undefined,
         },
       };
@@ -834,6 +836,7 @@ function resolveAbility(
         "stun",
         "fear",
         "polymorph",
+        "incapacitate",
         "root",
         "silence",
         "slow",
@@ -872,8 +875,16 @@ function applyControlStatus(
   const source = players[sourceId];
   const target = players[targetId];
   if (!source || !target) return;
-  const isControl = ["stun", "fear", "polymorph", "root"].includes(status);
-  const prior = target.diminishingReturns?.[status];
+  const isControl = [
+    "stun",
+    "fear",
+    "polymorph",
+    "incapacitate",
+    "root",
+  ].includes(status);
+  const diminishingStatus: Status =
+    status === "incapacitate" ? "polymorph" : status;
+  const prior = target.diminishingReturns?.[diminishingStatus];
   const count = prior && prior.resetsAt > tick ? prior.count : 0;
   if (isControl && count >= 3) return;
   const duration =
@@ -887,14 +898,16 @@ function applyControlStatus(
     ...(status === "polymorph"
       ? { polymorphNextHealTick: tick + TICKS_PER_SECOND }
       : {}),
-    ...(["silence", "stun", "fear", "polymorph"].includes(status)
+    ...(["silence", "stun", "fear", "polymorph", "incapacitate"].includes(
+      status,
+    )
       ? { cast: undefined }
       : {}),
     ...(isControl
       ? {
           diminishingReturns: {
             ...target.diminishingReturns,
-            [status]: { count: count + 1, resetsAt: until + 450 },
+            [diminishingStatus]: { count: count + 1, resetsAt: until + 450 },
           },
         }
       : {}),
@@ -908,7 +921,7 @@ function applyControlStatus(
     sourceId,
     targetId: target.id,
     abilityId: ability.id,
-    text: `${target.name}: ${status}`,
+    text: `${target.name}: ${ability.name}`,
   });
 }
 function regenerate(players: Record<string, PlayerState>) {

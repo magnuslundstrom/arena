@@ -213,6 +213,43 @@ describe("authoritative match simulation", () => {
     for (let i = 0; i < 40; i++) state = advanceTick(state, []).state;
     expect(state.players.c!.health).toBe(healthAfterBreak);
   });
+  it("treats Gouge as breakable incapacitation without Polymorph healing", () => {
+    let state = createMatch(roster, 42);
+    state = {
+      ...state,
+      players: {
+        ...state.players,
+        a: { ...state.players.a!, x: 400, y: 600, health: 1000 },
+        c: { ...state.players.c!, x: 500, y: 600, statuses: {} },
+      },
+    };
+    state = advanceTick(state, [
+      {
+        playerId: "c",
+        sequence: 0,
+        targetTick: 1,
+        kind: "ability",
+        abilityId: "gouge",
+        targetId: "a",
+      },
+    ]).state;
+
+    expect(state.players.a!.statuses.incapacitate).toBeGreaterThan(state.tick);
+    expect(state.players.a!.statuses.polymorph).toBeUndefined();
+    for (let i = 0; i < 35; i++) state = advanceTick(state, []).state;
+    expect(state.players.a!.health).toBe(1000);
+    state = advanceTick(state, [
+      {
+        playerId: "c",
+        sequence: 1,
+        targetTick: state.tick + 1,
+        kind: "ability",
+        abilityId: "hemorrhage",
+        targetId: "a",
+      },
+    ]).state;
+    expect(state.players.a!.statuses.incapacitate).toBeUndefined();
+  });
   it("Renew heals on scheduled ticks instead of instantly", () => {
     let state = createMatch(roster, 42);
     state = {

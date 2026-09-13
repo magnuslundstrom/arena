@@ -146,6 +146,7 @@ export function mountArena(
       aura: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
       fearIcon: THREE.Sprite;
       stunIcon: THREE.Sprite;
+      incapacitateIcon: THREE.Sprite;
       rootIcon: THREE.Sprite;
       rootIce: THREE.Group;
     }
@@ -374,6 +375,10 @@ export function mountArena(
           stunIcon.position.set(0, 3.8, 0);
           stunIcon.visible = false;
           group.add(stunIcon);
+          const incapacitateIcon = createStatusIcon("◎", "#ffb45f");
+          incapacitateIcon.position.set(0, 3.8, 0);
+          incapacitateIcon.visible = false;
+          group.add(incapacitateIcon);
           const rootIcon = createStatusIcon("❄", "#8de8ff");
           rootIcon.position.set(0, 3.8, 0);
           rootIcon.visible = false;
@@ -445,6 +450,7 @@ export function mountArena(
             aura,
             fearIcon,
             stunIcon,
+            incapacitateIcon,
             rootIcon,
             rootIce,
           };
@@ -454,6 +460,8 @@ export function mountArena(
           p.health > 0 && (p.statuses.polymorph ?? 0) > state.tick;
         const feared = p.health > 0 && (p.statuses.fear ?? 0) > state.tick;
         const stunned = p.health > 0 && (p.statuses.stun ?? 0) > state.tick;
+        const incapacitated =
+          p.health > 0 && (p.statuses.incapacitate ?? 0) > state.tick;
         const rooted = p.health > 0 && (p.statuses.root ?? 0) > state.tick;
         const jumping =
           p.jumpStartedTick !== undefined &&
@@ -474,6 +482,9 @@ export function mountArena(
           unit.group.rotation.y = Math.atan2(motion.x, motion.z);
         unit.humanoid.visible = !polymorphed;
         unit.humanoid.position.y = stunned ? -0.12 : 0;
+        unit.humanoid.rotation.z = incapacitated
+          ? Math.sin(now * 0.008) * 0.12
+          : 0;
         unit.sheep.visible = polymorphed;
         unit.sheep.position.y = polymorphed ? Math.sin(now * 0.009) * 0.08 : 0;
         unit.sheep.rotation.y = Math.sin(now * 0.004) * 0.12;
@@ -484,8 +495,13 @@ export function mountArena(
         unit.stunIcon.position.x = Math.sin(now * 0.014) * 0.32;
         unit.stunIcon.position.y = 3.7 + Math.cos(now * 0.014) * 0.12;
         unit.stunIcon.material.rotation = now * 0.003;
+        unit.incapacitateIcon.visible = incapacitated;
+        unit.incapacitateIcon.position.x = Math.sin(now * 0.011) * 0.26;
+        unit.incapacitateIcon.position.y = 3.72 + Math.cos(now * 0.011) * 0.1;
+        unit.incapacitateIcon.material.rotation = -now * 0.002;
         unit.rootIcon.visible = rooted;
-        unit.rootIcon.position.x = feared || stunned ? -0.7 : 0;
+        unit.rootIcon.position.x =
+          feared || stunned || incapacitated ? -0.7 : 0;
         unit.rootIcon.position.y = 3.72 + Math.sin(now * 0.008) * 0.08;
         unit.rootIcon.material.rotation = Math.sin(now * 0.004) * 0.12;
         unit.rootIce.visible = rooted;
