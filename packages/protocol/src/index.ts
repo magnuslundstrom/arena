@@ -25,8 +25,8 @@ export const PlayerIntentSchema = Type.Object(
     intent: Type.Union([
       Type.Object({
         type: Type.Literal("move"),
-        x: Type.Union([Type.Literal(-1), Type.Literal(0), Type.Literal(1)]),
-        y: Type.Union([Type.Literal(-1), Type.Literal(0), Type.Literal(1)]),
+        x: Type.Number({ minimum: -2, maximum: 2 }),
+        y: Type.Number({ minimum: -2, maximum: 2 }),
       }),
       Type.Object({ type: Type.Literal("target"), targetId: Type.String() }),
       Type.Object({

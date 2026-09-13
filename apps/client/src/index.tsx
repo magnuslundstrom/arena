@@ -13,14 +13,9 @@ import {
   type ServerSnapshot,
   type ServerWelcome,
 } from "@arena/protocol";
-import {
-  ARENA_HEIGHT,
-  ARENA_WIDTH,
-  PILLARS,
-  type MatchState,
-  type PlayerState,
-} from "@arena/simulation";
+import { type MatchState, type PlayerState } from "@arena/simulation";
 import "./styles.css";
+import { mountArena, cameraHeading } from "./arena3d";
 
 function App() {
   const [specId, setSpecId] = createSignal<SpecId>("frost-mage");
@@ -117,7 +112,10 @@ function App() {
           : me.targetId;
     const point =
       ability.target === "point"
-        ? { x: me.x + (me.team === 0 ? 600 : -600), y: me.y }
+        ? {
+            x: me.x - Math.sin(cameraHeading.yaw) * 600,
+            y: me.y - Math.cos(cameraHeading.yaw) * 600,
+          }
         : undefined;
     send({
       type: "ability",
@@ -164,7 +162,14 @@ function App() {
       if (!self() || state()?.phase !== "running") return;
       const x = (held.has("d") ? 1 : 0) - (held.has("a") ? 1 : 0);
       const y = (held.has("s") ? 1 : 0) - (held.has("w") ? 1 : 0);
-      if (x || y) send({ type: "move", x, y });
+      if (x || y) {
+        const yaw = cameraHeading.yaw;
+        send({
+          type: "move",
+          x: Math.cos(yaw) * x + Math.sin(yaw) * y,
+          y: -Math.sin(yaw) * x + Math.cos(yaw) * y,
+        });
+      }
     }, 33);
     onCleanup(() => {
       window.removeEventListener("keydown", keydown);
@@ -273,28 +278,15 @@ function Game(props: {
 }) {
   let canvas!: HTMLCanvasElement;
   onMount(() => {
-    const context = canvas.getContext("2d")!;
-    let frame = 0;
-    const draw = () => {
-      frame = requestAnimationFrame(draw);
-      drawArena(context, canvas, props.state, props.selfId);
-    };
-    draw();
-    onCleanup(() => cancelAnimationFrame(frame));
+    onCleanup(
+      mountArena(
+        canvas,
+        () => props.state,
+        () => props.selfId,
+        props.onTarget,
+      ),
+    );
   });
-  const select = (event: MouseEvent) => {
-    if (!props.state) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * ARENA_WIDTH;
-    const y = ((event.clientY - rect.top) / rect.height) * ARENA_HEIGHT;
-    const target = Object.values(props.state.players)
-      .filter((p) => p.health > 0)
-      .sort(
-        (a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y),
-      )[0];
-    if (target && Math.hypot(target.x - x, target.y - y) < 130)
-      props.onTarget(target.id);
-  };
   return (
     <main class="game">
       <div class="unit-frames">
@@ -338,7 +330,13 @@ function Game(props: {
           )}
         </For>
       </div>
-      <canvas ref={canvas} width={1200} height={720} onClick={select} />
+      <canvas
+        ref={canvas}
+        aria-label="Third-person arena: hold right mouse to orbit; wheel to zoom"
+      />
+      <div class="camera-help">
+        WASD move · Right-drag camera · Scroll zoom · Tab target
+      </div>
       <Show when={props.state?.phase === "waiting"}>
         <div class="overlay">
           Waiting for four players
@@ -356,85 +354,6 @@ function Game(props: {
       <CombatLog events={props.state?.events ?? []} />
     </main>
   );
-}
-
-function drawArena(
-  ctx: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
-  state?: MatchState,
-  selfId?: string,
-) {
-  const sx = canvas.width / ARENA_WIDTH;
-  const sy = canvas.height / ARENA_HEIGHT;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#111724";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = "#28344a";
-  ctx.lineWidth = 3;
-  ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
-  for (const pillar of PILLARS) {
-    ctx.fillStyle = "#273044";
-    ctx.beginPath();
-    ctx.arc(pillar.x * sx, pillar.y * sy, 105 * sx, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#52617d";
-    ctx.stroke();
-  }
-  if (!state) return;
-  for (const player of Object.values(state.players)) {
-    const selected = state.players[selfId ?? ""]?.targetId === player.id;
-    const radius = 32;
-    if (selected) {
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.arc(player.x * sx, player.y * sy, radius + 8, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.globalAlpha =
-      player.health > 0
-        ? (player.statuses.stealth ?? 0) > state.tick && player.id !== selfId
-          ? 0.25
-          : 1
-        : 0.25;
-    ctx.fillStyle = SPECS[player.specId].color;
-    ctx.beginPath();
-    ctx.arc(player.x * sx, player.y * sy, radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = player.team === 0 ? "#59a8ff" : "#ff5d78";
-    ctx.fillRect(
-      player.x * sx - 42,
-      player.y * sy - 52,
-      84 * (player.health / SPECS[player.specId].maxHealth),
-      7,
-    );
-    ctx.fillStyle = "#fff";
-    ctx.font = "600 14px system-ui";
-    ctx.textAlign = "center";
-    ctx.fillText(player.name, player.x * sx, player.y * sy + 55);
-    const statuses = Object.entries(player.statuses)
-      .filter(([, until]) => (until ?? 0) > state.tick)
-      .map(([name]) => name)
-      .join(" · ");
-    if (statuses) {
-      ctx.fillStyle = "#ffd36e";
-      ctx.font = "11px system-ui";
-      ctx.fillText(statuses, player.x * sx, player.y * sy - 62);
-    }
-    ctx.globalAlpha = 1;
-    if (player.cast) {
-      const ability = SPECS[player.specId].abilities.find(
-        (a) => a.id === player.cast?.abilityId,
-      );
-      const progress = ability
-        ? 1 - (player.cast.completesAtTick - state.tick) / ability.castTicks
-        : 0;
-      ctx.fillStyle = "#32364a";
-      ctx.fillRect(player.x * sx - 42, player.y * sy + 65, 84, 5);
-      ctx.fillStyle = "#ffd36e";
-      ctx.fillRect(player.x * sx - 42, player.y * sy + 65, 84 * progress, 5);
-    }
-  }
 }
 
 function ActionBar(props: {

@@ -106,8 +106,8 @@ interface CommandBase {
 export type SimulationCommand =
   | (CommandBase & {
       readonly kind: "move";
-      readonly x: -1 | 0 | 1;
-      readonly y: -1 | 0 | 1;
+      readonly x: number;
+      readonly y: number;
     })
   | (CommandBase & { readonly kind: "target"; readonly targetId: string })
   | (CommandBase & {
@@ -342,7 +342,8 @@ function applyCommand(
     const speed =
       SPECS[player.specId].speed *
       ((player.statuses.slow ?? 0) > tick ? 0.5 : 1);
-    const scale = command.x && command.y ? Math.SQRT1_2 : 1;
+    if (!Number.isFinite(command.x) || !Number.isFinite(command.y)) return;
+    const scale = 1 / Math.max(1, Math.hypot(command.x, command.y));
     const destination = {
       x: Math.round(
         clamp(player.x + command.x * speed * scale, 35, ARENA_WIDTH - 35),

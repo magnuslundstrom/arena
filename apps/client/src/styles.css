@@ -35,9 +35,12 @@ button {
   cursor: pointer;
 }
 .app {
+  overflow: hidden;
+  min-width: 0;
+  height: 100dvh;
   min-height: 100vh;
   display: grid;
-  grid-template-rows: 48px 1fr auto;
+  grid-template-rows: 48px minmax(0, 1fr) auto;
 }
 header {
   display: flex;
@@ -127,11 +130,14 @@ input {
   font-weight: 800;
 }
 .game {
+  min-width: 0;
+  overflow: hidden;
   position: relative;
   display: grid;
   place-items: center;
   min-height: 0;
-  padding: 12px;
+  padding: 0;
+  height: 100%;
 }
 .unit-frames {
   position: absolute;
@@ -160,11 +166,25 @@ input {
   color: #bfc9db;
 }
 canvas {
-  width: min(100%, calc((100vh - 235px) * 1.6667));
-  aspect-ratio: 5/3;
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
   border-radius: 10px;
   box-shadow: 0 20px 80px #0008;
   cursor: crosshair;
+}
+.camera-help {
+  position: absolute;
+  bottom: 12px;
+  left: 20px;
+  font-size: 11px;
+  color: #e6e5dd;
+  padding: 7px 12px;
+  background: #101523b0;
+  border-radius: 5px;
+  pointer-events: none;
 }
 .overlay {
   position: absolute;
@@ -196,6 +216,7 @@ canvas {
   color: #75829d;
 }
 footer {
+  min-width: 0;
   padding: 10px 18px 15px;
   border-top: 1px solid #263149;
   background: #090e18;
@@ -219,7 +240,9 @@ meter {
 }
 .actions {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(74px, 1fr);
+  overflow-x: auto;
   gap: 5px;
   max-width: 1100px;
   margin: auto;
@@ -263,10 +286,10 @@ meter {
     grid-template-columns: 1fr;
   }
   .actions {
-    grid-template-columns: repeat(5, 1fr);
+    grid-auto-columns: 78px;
   }
   .self-bars {
-    grid-template-columns: 1fr;
+    grid-template-columns: 140px 1fr 1fr;
   }
   body {
     overflow: auto;

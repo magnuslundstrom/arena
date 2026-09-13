@@ -28,10 +28,16 @@ importers:
       solid-js:
         specifier: 1.9.15
         version: 1.9.15
+      three:
+        specifier: ^0.186.0
+        version: 0.186.0
     devDependencies:
       "@arena/config":
         specifier: workspace:*
         version: link:../../packages/config
+      "@types/three":
+        specifier: ^0.186.0
+        version: 0.186.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -254,6 +260,12 @@ packages:
         integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==,
       }
     engines: { node: ">=6.9.0" }
+
+  "@dimforge/rapier3d-compat@0.12.0":
+    resolution:
+      {
+        integrity: sha512-uekIGetywIgopfD97oDL5PfeezkFpNhwlzlaEYNOA0N6ghdsOvh/HYjSMek5Q2O1PYvRSDFcqFVJl4r4ZBwOow==,
+      }
 
   "@esbuild/aix-ppc64@0.28.2":
     resolution:
@@ -715,6 +727,12 @@ packages:
         integrity: sha512-XiMQh7qqVlxZzcVD+kkGMNGMzcTrDMLWI7S4x7z1MkCkbDPrekpZXEUK0eZqZFMuHQg2a2DZOcDIh9o5v3Gonw==,
       }
 
+  "@tweenjs/tween.js@23.1.3":
+    resolution:
+      {
+        integrity: sha512-vJmvvwFxYuGnF2axRtPYocag6Clbb5YS7kLL+SO/TeVFzHqDIWrNKYtcsPMibjDx9O+bu+psAy9NKfWklassUA==,
+      }
+
   "@types/babel__core@7.20.5":
     resolution:
       {
@@ -761,6 +779,24 @@ packages:
     resolution:
       {
         integrity: sha512-GNWcUTRBgIRJD5zj+Tq0fKOJ5XZajIiBroOF0yvj2bSU1WvNdYS/dn9UxwsujGW4JX06dnHyjV2y9rRaybH0iQ==,
+      }
+
+  "@types/stats.js@0.17.4":
+    resolution:
+      {
+        integrity: sha512-jIBvWWShCvlBqBNIZt0KAshWpvSjhkwkEu4ZUcASoAvhmrgAUI2t1dXrjSL4xXVLB4FznPrIsX3nKXFl/Dt4vA==,
+      }
+
+  "@types/three@0.186.0":
+    resolution:
+      {
+        integrity: sha512-mxYSBpDC+D0pLfSP6sW4WZTcT+nrtmZcimMqnVmy36Hte3XpeYSrvgg4TRdaM1GemGog1AWzI5qL2VoIfMXbJQ==,
+      }
+
+  "@types/webxr@0.5.24":
+    resolution:
+      {
+        integrity: sha512-h8fgEd/DpoS9CBrjEQXR+dIDraopAEfu4wYVNY2tEPwk60stPWhvZMf4Foo5FakuQ7HFZoa8WceaWFervK2Ovg==,
       }
 
   "@types/ws@8.18.1":
@@ -1213,6 +1249,12 @@ packages:
       picomatch:
         optional: true
 
+  fflate@0.8.3:
+    resolution:
+      {
+        integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==,
+      }
+
   find-my-way@9.9.0:
     resolution:
       {
@@ -1419,6 +1461,12 @@ packages:
         integrity: sha512-eRtbOb1N5iyH0tkQDAoQ4Ipsp/5qSR79Dzrz8hEPxRX10RWWR/iQXdoKmBSRCThY1Fh5EhISDtpSc93fpxUniQ==,
       }
     engines: { node: ">=12.13" }
+
+  meshoptimizer@1.1.1:
+    resolution:
+      {
+        integrity: sha512-oRFNWJRDA/WTrVj7NWvqa5HqE1t9MYDj2VaWirQCzCCrAd2GHrqR/sQezCxiWATPNlKTcRaPRHPJwIRoPBAp5g==,
+      }
 
   ms@2.1.3:
     resolution:
@@ -1689,6 +1737,12 @@ packages:
         integrity: sha512-e2zZ96wSChazBsbENf/Pcm/4swHt2cEKQ92rhUjkL9GCKiTDJIaTBenjE/m9DXi0QBmTMDkFDdOomUy20A1tDQ==,
       }
     engines: { node: ">=20" }
+
+  three@0.186.0:
+    resolution:
+      {
+        integrity: sha512-cr/fIM2ddMSVbYVgkfD4jLJv7Fh/8ZTjvo+7gQeSVGUZHxpx9FDwoL5iC7hUz/LiRA8wMbqfnb90xKfm1/HHkQ==,
+      }
 
   tinybench@6.1.4:
     resolution:
@@ -2004,6 +2058,8 @@ snapshots:
       "@babel/helper-string-parser": 7.29.7
       "@babel/helper-validator-identifier": 7.29.7
 
+  "@dimforge/rapier3d-compat@0.12.0": {}
+
   "@esbuild/aix-ppc64@0.28.2":
     optional: true
 
@@ -2177,6 +2233,8 @@ snapshots:
 
   "@sinclair/typebox@0.34.52": {}
 
+  "@tweenjs/tween.js@23.1.3": {}
+
   "@types/babel__core@7.20.5":
     dependencies:
       "@babel/parser": 7.29.8
@@ -2210,6 +2268,19 @@ snapshots:
   "@types/node@24.10.1":
     dependencies:
       undici-types: 7.16.0
+
+  "@types/stats.js@0.17.4": {}
+
+  "@types/three@0.186.0":
+    dependencies:
+      "@dimforge/rapier3d-compat": 0.12.0
+      "@tweenjs/tween.js": 23.1.3
+      "@types/stats.js": 0.17.4
+      "@types/webxr": 0.5.24
+      fflate: 0.8.3
+      meshoptimizer: 1.1.1
+
+  "@types/webxr@0.5.24": {}
 
   "@types/ws@8.18.1":
     dependencies:
@@ -2442,6 +2513,8 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.7
 
+  fflate@0.8.3: {}
+
   find-my-way@9.9.0:
     dependencies:
       fast-deep-equal: 3.1.3
@@ -2537,6 +2610,8 @@ snapshots:
   merge-anything@5.1.7:
     dependencies:
       is-what: 4.1.16
+
+  meshoptimizer@1.1.1: {}
 
   ms@2.1.3: {}
 
@@ -2675,6 +2750,8 @@ snapshots:
   thread-stream@4.2.0:
     dependencies:
       real-require: 1.0.0
+
+  three@0.186.0: {}
 
   tinybench@6.1.4: {}
 

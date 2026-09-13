@@ -15,6 +15,15 @@ const roster: MatchPlayer[] = [
   { id: "d", name: "D", team: 1, specId: "frost-mage" },
 ];
 describe("authoritative match simulation", () => {
+  it("normalizes camera-relative movement so analog vectors cannot increase speed", () => {
+    const state = createMatch(roster, 42);
+    const result = advanceTick(state, [
+      { playerId: "a", sequence: 0, targetTick: 1, kind: "move", x: 2, y: 2 },
+    ]).state.players.a!;
+    expect(Math.hypot(result.x - 250, result.y - 450)).toBeLessThan(12);
+    expect(result.x).toBeGreaterThan(250);
+    expect(result.y).toBeGreaterThan(450);
+  });
   it("Ice Block prevents damage and actions for its duration", () => {
     let state = createMatch(roster, 42);
     state = {
