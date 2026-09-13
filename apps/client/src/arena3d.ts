@@ -41,8 +41,9 @@ function playAnimation(unit: ArenaUnit, name: string) {
   const previous = unit.currentAction
     ? unit.actions.get(unit.currentAction)
     : undefined;
-  previous?.fadeOut(0.16);
-  next.reset().fadeIn(0.16).play();
+  const fade = unit.specId === "discipline-priest" ? 0.22 : 0.16;
+  previous?.fadeOut(fade);
+  next.reset().fadeIn(fade).play();
   unit.currentAction = name;
 }
 
@@ -204,7 +205,14 @@ export function mountArena(
     const death = unit.actions.get("Death");
     death?.setLoop(THREE.LoopOnce, 1);
     if (death) death.clampWhenFinished = true;
-    playAnimation(unit, "Idle");
+    if (unit.specId === "discipline-priest") {
+      unit.actions.get("Spell1")?.setEffectiveTimeScale(0.78);
+      unit.actions.get("Staff_Attack")?.setEffectiveTimeScale(1.15);
+    }
+    playAnimation(
+      unit,
+      unit.specId === "discipline-priest" ? "Idle_Weapon" : "Idle",
+    );
   }
   function loadCharacter(specId: string, path: string) {
     new GLTFLoader().load(
@@ -724,19 +732,26 @@ export function mountArena(
         unit.ring.visible = me?.targetId === p.id || p.id === me?.id;
         unit.bar.scale.x = (1.7 * p.health) / SPECS[p.specId].maxHealth;
         const casting = !!p.cast && p.health > 0;
-        const elapsed = (now - (effects.gestures.get(p.id) ?? -10000)) / 1000;
+        const gesture = effects.gestures.get(p.id);
+        const elapsed = (now - (gesture?.at ?? -10000)) / 1000;
         const release = elapsed < 0.4 ? Math.sin((elapsed / 0.4) * Math.PI) : 0;
         const rogueAttacking =
           p.specId === "subtlety-rogue" && release > 0 && p.health > 0;
         const spellGesturing =
           p.specId !== "subtlety-rogue" && release > 0 && p.health > 0;
+        const abilityId = p.cast?.abilityId ?? gesture?.abilityId ?? "";
+        const priestOffensive =
+          p.specId === "discipline-priest" &&
+          /mana-burn|shadow-word-death|psychic-scream/.test(abilityId);
         unit.mixer?.update(dt);
         playAnimation(
           unit,
           p.health <= 0
             ? "Death"
             : casting || spellGesturing
-              ? "Spell1"
+              ? priestOffensive
+                ? "Staff_Attack"
+                : "Spell1"
               : stunned || incapacitated
                 ? "RecieveHit"
                 : rogueAttacking
@@ -745,7 +760,9 @@ export function mountArena(
                     ? "Run"
                     : p.specId === "subtlety-rogue"
                       ? "Attacking_Idle"
-                      : "Idle",
+                      : p.specId === "discipline-priest"
+                        ? "Idle_Weapon"
+                        : "Idle",
         );
         unit.arms.forEach((arm, i) => {
           arm.rotation.x = stunned

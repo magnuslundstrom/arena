@@ -34,7 +34,7 @@ export function createSpellEffects(scene: THREE.Scene) {
     offsetX: number;
   }[] = [];
   let consumedTick = -1;
-  const gestures = new Map<string, number>();
+  const gestures = new Map<string, { at: number; abilityId: string }>();
 
   function spawnCombatText(
     targetId: string,
@@ -150,7 +150,7 @@ export function createSpellEffects(scene: THREE.Scene) {
             ? new THREE.Vector3(target.x / 25, 1.4, target.y / 25)
             : from;
           if (event.type === "ability" && source && from && to) {
-            gestures.set(source.id, now);
+            gestures.set(source.id, { at: now, abilityId: id });
             if (
               /bolt|lance|fire-blast|shadow-word-death/.test(id) &&
               from.distanceTo(to) > 2
