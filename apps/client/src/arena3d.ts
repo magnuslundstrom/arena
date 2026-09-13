@@ -1,9 +1,45 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import { PILLARS, type MatchState } from "@arena/simulation";
 import { SPECS } from "@arena/game-content";
 import { createSpellEffects, spellColor } from "./spell-effects";
 
 export const cameraHeading = { yaw: -Math.PI / 2 };
+
+interface ArenaUnit {
+  specId: string;
+  group: THREE.Group;
+  humanoid: THREE.Group;
+  proxy: THREE.Group;
+  sheep: THREE.Group;
+  legs: THREE.Mesh[];
+  ring: THREE.Mesh;
+  bar: THREE.Sprite;
+  arms: THREE.Group[];
+  glow: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
+  aura: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
+  fearIcon: THREE.Sprite;
+  stunIcon: THREE.Sprite;
+  incapacitateIcon: THREE.Sprite;
+  rootIcon: THREE.Sprite;
+  rootIce: THREE.Group;
+  mixer?: THREE.AnimationMixer;
+  actions?: Map<string, THREE.AnimationAction>;
+  currentAction?: string;
+}
+
+function playAnimation(unit: ArenaUnit, name: string) {
+  if (!unit.actions || unit.currentAction === name) return;
+  const next = unit.actions.get(name) ?? unit.actions.get("Idle");
+  if (!next) return;
+  const previous = unit.currentAction
+    ? unit.actions.get(unit.currentAction)
+    : undefined;
+  previous?.fadeOut(0.16);
+  next.reset().fadeIn(0.16).play();
+  unit.currentAction = name;
+}
 
 function createStatusIcon(symbol: string, color: string) {
   const canvas = document.createElement("canvas");
@@ -46,6 +82,9 @@ export function mountArena(
 ) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.12;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   const scene = new THREE.Scene();
@@ -132,26 +171,50 @@ export function mountArena(
   for (let x = 0; x <= 80; x += 8)
     for (const z of [0, 48])
       mesh(new THREE.BoxGeometry(1.6, 5, 1.6), stone, x, 2.5, z);
-  const units = new Map<
-    string,
-    {
-      group: THREE.Group;
-      humanoid: THREE.Group;
-      sheep: THREE.Group;
-      legs: THREE.Mesh[];
-      ring: THREE.Mesh;
-      bar: THREE.Sprite;
-      arms: THREE.Group[];
-      glow: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
-      aura: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
-      fearIcon: THREE.Sprite;
-      stunIcon: THREE.Sprite;
-      incapacitateIcon: THREE.Sprite;
-      rootIcon: THREE.Sprite;
-      rootIce: THREE.Group;
-    }
-  >();
+  const units = new Map<string, ArenaUnit>();
   const effects = createSpellEffects(scene);
+  let wizardScene: THREE.Group | undefined;
+  let wizardAnimations: THREE.AnimationClip[] = [];
+  let disposed = false;
+  function attachWizard(unit: ArenaUnit) {
+    if (!wizardScene || unit.mixer) return;
+    const model = cloneSkeleton(wizardScene);
+    model.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+    });
+    const bounds = new THREE.Box3().setFromObject(model);
+    const size = bounds.getSize(new THREE.Vector3());
+    const scale = 2.55 / Math.max(0.01, size.y);
+    model.scale.setScalar(scale);
+    model.position.y = -bounds.min.y * scale;
+    unit.humanoid.add(model);
+    unit.proxy.visible = false;
+    unit.mixer = new THREE.AnimationMixer(model);
+    unit.actions = new Map(
+      wizardAnimations.map((clip) => [clip.name, unit.mixer!.clipAction(clip)]),
+    );
+    const death = unit.actions.get("Death");
+    death?.setLoop(THREE.LoopOnce, 1);
+    if (death) death.clampWhenFinished = true;
+    playAnimation(unit, "Idle");
+  }
+  new GLTFLoader().load(
+    "/models/undead-frost-mage/model.gltf",
+    (asset) => {
+      if (disposed) return;
+      wizardScene = asset.scene;
+      wizardAnimations = asset.animations;
+      for (const unit of units.values())
+        if (unit.specId === "frost-mage") attachWizard(unit);
+    },
+    undefined,
+    () => {
+      // The procedural model remains visible as a resilient fallback.
+    },
+  );
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   let pitch = 0.34,
@@ -243,6 +306,8 @@ export function mountArena(
           scene.add(group);
           const humanoid = new THREE.Group();
           group.add(humanoid);
+          const proxy = new THREE.Group();
+          humanoid.add(proxy);
           const cloth = new THREE.MeshStandardMaterial({
             color: p.specId === "frost-mage" ? 0x293b58 : SPECS[p.specId].color,
             roughness: 0.65,
@@ -254,7 +319,7 @@ export function mountArena(
             0,
             1.4,
             0,
-            humanoid,
+            proxy,
           );
           mesh(
             new THREE.SphereGeometry(0.33, 12, 10),
@@ -265,7 +330,7 @@ export function mountArena(
             0,
             2.22,
             0,
-            humanoid,
+            proxy,
           );
           const legs = [-0.24, 0.24].map((x) =>
             mesh(
@@ -274,13 +339,13 @@ export function mountArena(
               x,
               0.48,
               0,
-              humanoid,
+              proxy,
             ),
           );
           const arms = [-0.65, 0.65].map((x) => {
             const pivot = new THREE.Group();
             pivot.position.set(x, 1.85, 0);
-            humanoid.add(pivot);
+            proxy.add(pivot);
             mesh(
               new THREE.BoxGeometry(0.3, 0.85, 0.35),
               cloth,
@@ -301,7 +366,7 @@ export function mountArena(
             }),
           );
           glow.position.set(0, 1.7, 0.95);
-          humanoid.add(glow);
+          proxy.add(glow);
           const aura = new THREE.Mesh(
             new THREE.SphereGeometry(1.15, 20, 14),
             new THREE.MeshBasicMaterial({
@@ -329,7 +394,7 @@ export function mountArena(
             0.8,
             1.3,
             0.2,
-            humanoid,
+            proxy,
           );
           if (p.specId === "frost-mage") {
             const teal = new THREE.MeshStandardMaterial({
@@ -356,7 +421,7 @@ export function mountArena(
               0,
               1.73,
               -0.08,
-              humanoid,
+              proxy,
             );
             mantle.rotation.y = Math.PI / 8;
             mantle.scale.z = 0.72;
@@ -366,7 +431,7 @@ export function mountArena(
               0,
               2.02,
               0,
-              humanoid,
+              proxy,
             );
             scarf.rotation.x = Math.PI / 2;
             mesh(
@@ -375,7 +440,7 @@ export function mountArena(
               0,
               1.12,
               0.02,
-              humanoid,
+              proxy,
             );
             for (const x of [-0.28, 0.28])
               mesh(
@@ -384,7 +449,7 @@ export function mountArena(
                 x,
                 0.83,
                 0.26,
-                humanoid,
+                proxy,
               );
             mesh(
               new THREE.BoxGeometry(0.32, 0.38, 0.28),
@@ -392,7 +457,7 @@ export function mountArena(
               0.53,
               0.92,
               0.36,
-              humanoid,
+              proxy,
             );
             for (const x of [-0.13, 0.13])
               mesh(
@@ -401,7 +466,7 @@ export function mountArena(
                 x,
                 2.27,
                 0.31,
-                humanoid,
+                proxy,
               );
             const hair = new THREE.MeshStandardMaterial({
               color: 0xd9e0e8,
@@ -415,7 +480,7 @@ export function mountArena(
                 Math.sin(angle) * 0.24,
                 2.58 + Math.cos(angle) * 0.06,
                 -0.08 - Math.cos(angle) * 0.2,
-                humanoid,
+                proxy,
               );
               lock.rotation.z = Math.sin(angle) * 0.55;
               lock.rotation.x = -0.45;
@@ -436,7 +501,7 @@ export function mountArena(
               0.8,
               2.66,
               0.2,
-              humanoid,
+              proxy,
             );
             for (const x of [0.57, 1.03]) {
               const tine = mesh(
@@ -445,7 +510,7 @@ export function mountArena(
                 x,
                 2.48,
                 0.2,
-                humanoid,
+                proxy,
               );
               tine.rotation.z = x < 0.8 ? -0.35 : 0.35;
             }
@@ -561,8 +626,10 @@ export function mountArena(
           group.position.set(p.x / 25, 0, p.y / 25);
           group.rotation.y = p.team === 0 ? Math.PI / 2 : -Math.PI / 2;
           unit = {
+            specId: p.specId,
             group,
             humanoid,
+            proxy,
             sheep,
             legs,
             ring,
@@ -577,6 +644,7 @@ export function mountArena(
             rootIce,
           };
           units.set(p.id, unit);
+          if (p.specId === "frost-mage") attachWizard(unit);
         }
         const polymorphed =
           p.health > 0 && (p.statuses.polymorph ?? 0) > state.tick;
@@ -640,10 +708,23 @@ export function mountArena(
                 ? Math.sin(now * 0.012 + i * Math.PI) * 0.55
                 : 0;
         });
-        unit.group.rotation.z = p.health <= 0 ? Math.PI / 2 : 0;
+        unit.group.rotation.z = p.health <= 0 && !unit.mixer ? Math.PI / 2 : 0;
         unit.ring.visible = me?.targetId === p.id || p.id === me?.id;
         unit.bar.scale.x = (1.7 * p.health) / SPECS[p.specId].maxHealth;
         const casting = !!p.cast && p.health > 0;
+        unit.mixer?.update(dt);
+        playAnimation(
+          unit,
+          p.health <= 0
+            ? "Death"
+            : casting
+              ? "Spell1"
+              : stunned || incapacitated
+                ? "RecieveHit"
+                : feared || jumping || motion.length() > 0.02
+                  ? "Run"
+                  : "Idle",
+        );
         const elapsed = (now - (effects.gestures.get(p.id) ?? -10000)) / 1000;
         const release = elapsed < 0.4 ? Math.sin((elapsed / 0.4) * Math.PI) : 0;
         unit.arms.forEach((arm, i) => {
@@ -707,9 +788,11 @@ export function mountArena(
   }
   frame = requestAnimationFrame(draw);
   return () => {
+    disposed = true;
     cancelAnimationFrame(frame);
     resize.disconnect();
     effects.dispose();
+    for (const unit of units.values()) unit.mixer?.stopAllAction();
     canvas.removeEventListener("pointerdown", down);
     canvas.removeEventListener("pointermove", move);
     canvas.removeEventListener("pointerup", up);

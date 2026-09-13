@@ -3,8 +3,14 @@
 Reference: [undead-frost-mage-model-sheet.png](./undead-frost-mage-model-sheet.png)
 
 This character establishes the shared scale, skeleton, and animation contract for
-arena combatants. The current Three.js mesh is an animated proxy built from this
-sheet; a production sculpt can replace it without changing simulation code.
+arena combatants. The playable vertical slice now uses the rigged Wizard from
+[Quaternius' RPG Character Pack](https://quaternius.com/packs/rpgcharacters.html)
+as its CC0 runtime base. It replaces the procedural Frost Mage proxy and currently
+drives idle, run, cast, hit, and death states. The generated sheet remains the art
+direction for a future bespoke sculpt and texture pass.
+
+The source license is preserved at
+[`docs/licenses/quaternius-rpg-character-pack.txt`](../licenses/quaternius-rpg-character-pack.txt).
 
 ## Mesh budget and materials
 
@@ -31,22 +37,22 @@ Skin and staff must share one root transform. Apply transforms before export.
 
 ## Required animation clips
 
-| Clip | Loop | Notes |
-| --- | --- | --- |
-| `Idle` | yes | Subtle hunched breathing, staff planted |
-| `RunForward` | yes | Readable at the current chase-camera distance |
-| `StrafeLeft` | yes | Feet and torso remain combat-facing |
-| `StrafeRight` | yes | Mirrored timing is acceptable |
-| `JumpStart` | no | Anticipation and takeoff |
-| `JumpLoop` | yes | Compact airborne pose |
-| `JumpLand` | no | Short recovery |
-| `CastStart` | no | Hands gather toward the spell origin |
-| `CastLoop` | yes | Supports arbitrary cast duration |
-| `CastRelease` | no | Clear forward release from both hands |
-| `Hit` | no | Brief readable impact |
-| `Stun` | yes | Rigid off-balance pose |
-| `FearRun` | yes | Panicked run while retaining locomotion |
-| `Death` | no | Ends in a stable floor pose |
+| Clip          | Loop | Notes                                         |
+| ------------- | ---- | --------------------------------------------- |
+| `Idle`        | yes  | Subtle hunched breathing, staff planted       |
+| `RunForward`  | yes  | Readable at the current chase-camera distance |
+| `StrafeLeft`  | yes  | Feet and torso remain combat-facing           |
+| `StrafeRight` | yes  | Mirrored timing is acceptable                 |
+| `JumpStart`   | no   | Anticipation and takeoff                      |
+| `JumpLoop`    | yes  | Compact airborne pose                         |
+| `JumpLand`    | no   | Short recovery                                |
+| `CastStart`   | no   | Hands gather toward the spell origin          |
+| `CastLoop`    | yes  | Supports arbitrary cast duration              |
+| `CastRelease` | no   | Clear forward release from both hands         |
+| `Hit`         | no   | Brief readable impact                         |
+| `Stun`        | yes  | Rigid off-balance pose                        |
+| `FearRun`     | yes  | Panicked run while retaining locomotion       |
+| `Death`       | no   | Ends in a stable floor pose                   |
 
 ## GLB delivery
 
