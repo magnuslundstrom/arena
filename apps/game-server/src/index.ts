@@ -11,6 +11,7 @@ import {
 } from "@arena/protocol";
 import {
   advanceTick,
+  botCommands,
   createMatch,
   TICK_DURATION_MS,
   type MatchPlayer,
@@ -21,10 +22,14 @@ import {
 const port = Number(process.env.PORT ?? 3001);
 const host = process.env.HOST ?? "127.0.0.1";
 const server = Fastify({ logger: true });
-const sockets = new WebSocketServer({ noServer: true });
+const sockets = new WebSocketServer({ noServer: true, maxPayload: 4096 });
 const clients = new Map<WebSocket, MatchPlayer>();
 let commands: SimulationCommand[] = [];
 let state = createMatch([], 2026);
+const practice = new Map<
+  WebSocket,
+  { state: MatchState; commands: SimulationCommand[]; bots: string[] }
+>();
 
 server.get("/health", async () => ({
   status: "ok",
@@ -54,38 +59,75 @@ sockets.on("connection", (socket) => {
     if (!joined) {
       if (!Value.Check(ClientHelloSchema, message))
         return socket.close(1008, "Expected client hello");
-      if (clients.size >= 4) return socket.close(1013, "Arena is full");
+      const publicPlayers = [...clients.entries()]
+        .filter(([ws]) => !practice.has(ws))
+        .map(([, p]) => p);
+      if (!message.practice && publicPlayers.length >= 4)
+        return socket.close(1013, "Arena is full");
       const player: MatchPlayer = {
         id: randomUUID(),
         name: message.name,
         specId: message.specId,
-        team: clients.size < 2 ? 0 : 1,
+        team: publicPlayers.filter((p) => p.team === 0).length < 2 ? 0 : 1,
       };
       clients.set(socket, player);
-      state = createMatch([...clients.values()], 2026);
+      if (message.practice) {
+        const human = { ...player, team: 0 as const };
+        clients.set(socket, human);
+        const roster: MatchPlayer[] = [
+          human,
+          {
+            id: "bot-ally",
+            name: "Allied Priest",
+            team: 0,
+            specId: "discipline-priest",
+          },
+          { id: "bot-mage", name: "Enemy Mage", team: 1, specId: "frost-mage" },
+          {
+            id: "bot-rogue",
+            name: "Enemy Rogue",
+            team: 1,
+            specId: "subtlety-rogue",
+          },
+        ];
+        practice.set(socket, {
+          state: createMatch(roster, 2026),
+          commands: [],
+          bots: roster.slice(1).map((p) => p.id),
+        });
+      } else
+        state = createMatch(
+          [...clients.entries()]
+            .filter(([ws]) => !practice.has(ws))
+            .map(([, p]) => p),
+          2026,
+        );
       const welcome: ServerWelcome = {
         kind: "server.welcome",
         protocolVersion: PROTOCOL_VERSION,
         playerId: player.id,
-        team: player.team,
+        team: message.practice ? 0 : player.team,
       };
       socket.send(JSON.stringify(welcome));
       broadcast();
       return;
     }
     if (!Value.Check(PlayerIntentSchema, message)) return;
+    const room = practice.get(socket);
+    const pending = room?.commands ?? commands;
+    if (pending.filter((c) => c.playerId === joined.id).length >= 4) return;
     const base = {
       playerId: joined.id,
       sequence: message.sequence,
-      targetTick: state.tick + 1,
+      targetTick: (room?.state.tick ?? state.tick) + 1,
     };
     const intent = message.intent;
     if (intent.type === "move")
-      commands.push({ ...base, kind: "move", x: intent.x, y: intent.y });
+      pending.push({ ...base, kind: "move", x: intent.x, y: intent.y });
     else if (intent.type === "target")
-      commands.push({ ...base, kind: "target", targetId: intent.targetId });
+      pending.push({ ...base, kind: "target", targetId: intent.targetId });
     else
-      commands.push({
+      pending.push({
         ...base,
         kind: "ability",
         abilityId: intent.abilityId,
@@ -95,28 +137,52 @@ sockets.on("connection", (socket) => {
   });
   socket.on("close", () => {
     clients.delete(socket);
+    if (practice.delete(socket)) return;
     commands = [];
-    state = createMatch([...clients.values()], 2026);
+    state = createMatch(
+      [...clients.entries()]
+        .filter(([ws]) => !practice.has(ws))
+        .map(([, p]) => p),
+      2026,
+    );
     broadcast();
   });
 });
 
 setInterval(() => {
-  if (clients.size === 4 && state.phase !== "finished") {
+  for (const room of practice.values()) {
+    room.state = advanceTick(room.state, [
+      ...room.commands,
+      ...botCommands(room.state, room.bots),
+    ]).state;
+    room.commands = [];
+  }
+  if (state.phase === "running") {
     state = advanceTick(state, commands).state;
     commands = [];
   }
-  if (state.tick % 2 === 0) broadcast();
+  broadcast();
 }, TICK_DURATION_MS);
 
 function broadcast() {
   for (const [socket, player] of clients) {
     if (socket.readyState !== WebSocket.OPEN) continue;
+    if (socket.bufferedAmount > 256_000) continue;
+    const visible = practice.get(socket)?.state ?? state;
+    const viewer = visible.players[player.id];
+    const visiblePlayers = Object.fromEntries(
+      Object.entries(visible.players).filter(
+        ([, p]) =>
+          p.team === viewer?.team ||
+          (p.statuses.stealth ?? 0) <= visible.tick ||
+          (viewer && Math.hypot(p.x - viewer.x, p.y - viewer.y) <= 160),
+      ),
+    );
     const snapshot: ServerSnapshot<MatchState> = {
       kind: "server.snapshot",
       protocolVersion: PROTOCOL_VERSION,
-      acknowledgedSequence: state.players[player.id]?.lastSequence ?? -1,
-      state,
+      acknowledgedSequence: visible.players[player.id]?.lastSequence ?? -1,
+      state: { ...visible, players: visiblePlayers },
     };
     socket.send(JSON.stringify(snapshot));
   }

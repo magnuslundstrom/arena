@@ -16,13 +16,17 @@ pnpm dev
 
 The client runs at `http://localhost:5173`. The game server runs at `http://localhost:3001`; its health endpoint is `GET /health` and its WebSocket endpoint is `/connect`.
 
-Open four browser tabs and join the shared room to start a 2v2 match. Controls:
+Choose **Practice with bots** to play immediately with an allied healer and two opponents. Each practice match is private. **Join match** starts a shared 2v2 match once four players have joined. Controls:
 
 - `WASD`: move
 - Click a combatant: select a target
+- `Tab`: cycle enemy targets; unit frames also select targets
 - `1`–`0`: use the corresponding ability
+- `Q`: Ice Block (Mage) or Stealth (Rogue)
 
-The current playable roster is Frost Mage, Subtlety Rogue, and Discipline Priest, with ten abilities per spec. This is an original prototype inspired by the combat structure of classic tab-target arena games; visual presentation and implementation are original.
+The current playable roster is Frost Mage, Subtlety Rogue, and Discipline Priest, with ten or eleven abilities per spec. This is an original prototype inspired by the combat structure of classic tab-target arena games; visual presentation and implementation are original.
+
+Pillars block movement and line of sight. Cast completion revalidates range and sight. Control has diminishing returns; Rogue finishers require combo points; Renew heals periodically. Practice bots follow the same simulation commands as players. Tuning and several ability effects remain simplified, and public matches currently reset on disconnect. Accounts, ranked matchmaking, reconnect recovery, and full TBC ability fidelity are still outstanding.
 
 ## Verification
 

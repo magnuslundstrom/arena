@@ -16,6 +16,7 @@ import {
 import {
   ARENA_HEIGHT,
   ARENA_WIDTH,
+  PILLARS,
   type MatchState,
   type PlayerState,
 } from "@arena/simulation";
@@ -38,7 +39,9 @@ function App() {
     self() ? SPECS[self()!.specId].abilities : SPECS[specId()].abilities,
   );
 
-  function connect() {
+  function connect(practice = false) {
+    sequence = 0;
+    setState(undefined);
     const protocol = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${protocol}://${location.host}/connect`);
     setConnection("Connecting");
@@ -51,6 +54,7 @@ function App() {
           protocolVersion: PROTOCOL_VERSION,
           name: name().trim() || "Player",
           specId: specId(),
+          practice,
         }),
       );
     });
@@ -61,7 +65,15 @@ function App() {
         setPlayerId(message.playerId);
         setTeam(message.team);
       } else {
-        setState(message.state);
+        setState((previous) => ({
+          ...message.state,
+          events: [
+            ...(previous?.events ?? []),
+            ...(previous?.tick === message.state.tick
+              ? []
+              : message.state.events),
+          ].slice(-40),
+        }));
         setConnection(
           message.state.phase === "waiting"
             ? `Waiting ${Object.keys(message.state.players).length}/4`
@@ -69,9 +81,9 @@ function App() {
         );
       }
     });
-    ws.addEventListener("close", () => {
+    ws.addEventListener("close", (event) => {
       setSocket(undefined);
-      setConnection("Disconnected");
+      setConnection(event.reason || "Disconnected");
     });
   }
 
@@ -99,7 +111,10 @@ function App() {
     const targetId =
       ability.target === "self" || ability.target === "point"
         ? undefined
-        : me.targetId;
+        : ability.target === "ally" &&
+            (!me.targetId || state()?.players[me.targetId]?.team !== me.team)
+          ? me.id
+          : me.targetId;
     const point =
       ability.target === "point"
         ? { x: me.x + (me.team === 0 ? 600 : -600), y: me.y }
@@ -117,8 +132,24 @@ function App() {
       if (["INPUT", "TEXTAREA"].includes((event.target as HTMLElement).tagName))
         return;
       held.add(event.key.toLowerCase());
-      const index = event.key === "0" ? 9 : Number(event.key) - 1;
-      if (index >= 0 && index < 10) {
+      if (event.key === "Tab") {
+        event.preventDefault();
+        const me = self();
+        const enemies = Object.values(state()?.players ?? {}).filter(
+          (p) => p.team !== me?.team && p.health > 0,
+        );
+        const current = enemies.findIndex((p) => p.id === me?.targetId);
+        const next = enemies[(current + 1) % enemies.length];
+        if (next) send({ type: "target", targetId: next.id });
+      }
+      if (event.repeat) return;
+      const index =
+        event.key.toLowerCase() === "q"
+          ? 10
+          : event.key === "0"
+            ? 9
+            : Number(event.key) - 1;
+      if (index >= 0 && index < abilities().length) {
         const ability = abilities()[index];
         if (ability) useAbility(ability.id);
       }
@@ -126,6 +157,8 @@ function App() {
     const keyup = (event: KeyboardEvent) =>
       held.delete(event.key.toLowerCase());
     window.addEventListener("keydown", keydown);
+    const blur = () => held.clear();
+    window.addEventListener("blur", blur);
     window.addEventListener("keyup", keyup);
     const movement = window.setInterval(() => {
       if (!self() || state()?.phase !== "running") return;
@@ -135,6 +168,7 @@ function App() {
     }, 33);
     onCleanup(() => {
       window.removeEventListener("keydown", keydown);
+      window.removeEventListener("blur", blur);
       window.removeEventListener("keyup", keyup);
       clearInterval(movement);
       socket()?.close();
@@ -149,6 +183,9 @@ function App() {
         <span class="team">
           Team {team() === undefined ? "—" : team()! + 1}
         </span>
+        <Show when={socket()}>
+          <button onClick={() => socket()?.close()}>Leave match</button>
+        </Show>
       </header>
       <Show
         when={socket()}
@@ -187,15 +224,15 @@ function Lobby(props: {
   specId: SpecId;
   onName: (value: string) => void;
   onSpec: (value: SpecId) => void;
-  onConnect: () => void;
+  onConnect: (practice: boolean) => void;
 }) {
   return (
     <main class="lobby">
       <p class="eyebrow">REAL-TIME 2V2</p>
       <h1>Enter the arena.</h1>
       <p>
-        Open four browser tabs, choose a spec, and join. WASD moves, click
-        selects, and 1–0 casts.
+        Choose a spec and practice with bots, or join a four-player match. WASD
+        moves, click selects, and 1–0 casts.
       </p>
       <label>
         Combatant name
@@ -219,7 +256,10 @@ function Lobby(props: {
           )}
         </For>
       </div>
-      <button class="join" onClick={props.onConnect}>
+      <button class="join" onClick={() => props.onConnect(true)}>
+        Practice with bots
+      </button>{" "}
+      <button class="join" onClick={() => props.onConnect(false)}>
         Join match
       </button>
     </main>
@@ -257,6 +297,47 @@ function Game(props: {
   };
   return (
     <main class="game">
+      <div class="unit-frames">
+        <For each={Object.values(props.state?.players ?? {})}>
+          {(p) => (
+            <button
+              classList={{
+                targeted:
+                  props.state?.players[props.selfId ?? ""]?.targetId === p.id,
+              }}
+              onClick={() => props.onTarget(p.id)}
+            >
+              <b style={{ color: p.team === 0 ? "#79b7ff" : "#ff7f96" }}>
+                {p.name}
+              </b>
+              <span>
+                {SPECS[p.specId].name} · {p.health} HP
+              </span>
+              <meter min={0} max={SPECS[p.specId].maxHealth} value={p.health} />
+              <Show when={p.shield}>
+                <small>Absorb {p.shield}</small>
+              </Show>
+              <Show when={p.cast}>
+                {(cast) => (
+                  <small>
+                    {
+                      SPECS[p.specId].abilities.find(
+                        (a) => a.id === cast().abilityId,
+                      )?.name
+                    }{" "}
+                    ·{" "}
+                    {Math.max(
+                      0,
+                      (cast().completesAtTick - (props.state?.tick ?? 0)) / 30,
+                    ).toFixed(1)}
+                    s
+                  </small>
+                )}
+              </Show>
+            </button>
+          )}
+        </For>
+      </div>
       <canvas ref={canvas} width={1200} height={720} onClick={select} />
       <Show when={props.state?.phase === "waiting"}>
         <div class="overlay">
@@ -291,10 +372,7 @@ function drawArena(
   ctx.strokeStyle = "#28344a";
   ctx.lineWidth = 3;
   ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
-  for (const pillar of [
-    { x: 820, y: 350 },
-    { x: 1180, y: 850 },
-  ]) {
+  for (const pillar of PILLARS) {
     ctx.fillStyle = "#273044";
     ctx.beginPath();
     ctx.arc(pillar.x * sx, pillar.y * sy, 105 * sx, 0, Math.PI * 2);
@@ -344,6 +422,18 @@ function drawArena(
       ctx.fillText(statuses, player.x * sx, player.y * sy - 62);
     }
     ctx.globalAlpha = 1;
+    if (player.cast) {
+      const ability = SPECS[player.specId].abilities.find(
+        (a) => a.id === player.cast?.abilityId,
+      );
+      const progress = ability
+        ? 1 - (player.cast.completesAtTick - state.tick) / ability.castTicks
+        : 0;
+      ctx.fillStyle = "#32364a";
+      ctx.fillRect(player.x * sx - 42, player.y * sy + 65, 84, 5);
+      ctx.fillStyle = "#ffd36e";
+      ctx.fillRect(player.x * sx - 42, player.y * sy + 65, 84 * progress, 5);
+    }
   }
 }
 
@@ -361,6 +451,9 @@ function ActionBar(props: {
   return (
     <footer>
       <div class="self-bars">
+        <Show when={props.player.specId === "subtlety-rogue"}>
+          <span>Combo points: {props.player.comboPoints ?? 0}/5</span>
+        </Show>
         <b>
           {props.player.name} · {SPECS[props.player.specId].name}
         </b>
@@ -391,7 +484,9 @@ function ActionBar(props: {
                 }
                 onClick={() => props.onUse(ability.id)}
               >
-                <kbd>{index() === 9 ? 0 : index() + 1}</kbd>
+                <kbd>
+                  {index() === 10 ? "Q" : index() === 9 ? 0 : index() + 1}
+                </kbd>
                 <span>{ability.name}</span>
                 <Show when={remaining() > 0}>
                   <em>{(remaining() / 30).toFixed(1)}</em>

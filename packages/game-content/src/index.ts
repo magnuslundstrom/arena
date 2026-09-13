@@ -12,6 +12,10 @@ export type EffectKind =
   | "slow"
   | "teleport"
   | "stealth"
+  | "immunity"
+  | "damage-reduction"
+  | "evasion"
+  | "cloak"
   | "dispel"
   | "reset-cooldowns";
 
@@ -104,6 +108,10 @@ export const SPECS: Readonly<Record<SpecId, SpecDefinition>> = {
       a("fire-blast", "Fire Blast", "enemy", 1200, s(8), 0, 150, [
         { kind: "damage", amount: 210 },
       ]),
+      a("ice-block", "Ice Block", "self", 0, s(240), 0, 0, [
+        { kind: "dispel" },
+        { kind: "immunity", durationTicks: s(10) },
+      ]),
     ],
   },
   "subtlety-rogue": {
@@ -135,16 +143,19 @@ export const SPECS: Readonly<Record<SpecId, SpecDefinition>> = {
       ]),
       a("cloak-of-shadows", "Cloak of Shadows", "self", 0, s(60), 0, 0, [
         { kind: "dispel" },
-        { kind: "shield", amount: 300 },
+        { kind: "cloak", durationTicks: s(5) },
       ]),
       a("vanish", "Vanish", "self", 0, s(120), 0, 0, [
         { kind: "stealth", durationTicks: s(10) },
       ]),
       a("evasion", "Evasion", "self", 0, s(120), 0, 0, [
-        { kind: "shield", amount: 550 },
+        { kind: "evasion", durationTicks: s(15) },
       ]),
       a("eviscerate", "Eviscerate", "enemy", 180, 0, 0, 35, [
         { kind: "damage", amount: 330 },
+      ]),
+      a("stealth", "Stealth", "self", 0, s(10), 0, 0, [
+        { kind: "stealth", durationTicks: s(600) },
       ]),
     ],
   },
@@ -173,7 +184,7 @@ export const SPECS: Readonly<Record<SpecId, SpecDefinition>> = {
         { kind: "shield", amount: 100 },
       ]),
       a("pain-suppression", "Pain Suppression", "ally", 1500, s(120), 0, 100, [
-        { kind: "shield", amount: 900 },
+        { kind: "damage-reduction", durationTicks: s(8) },
       ]),
       a("psychic-scream", "Psychic Scream", "enemy", 650, s(30), 0, 180, [
         { kind: "fear", durationTicks: s(6) },

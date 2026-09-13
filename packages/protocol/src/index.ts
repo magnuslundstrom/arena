@@ -12,6 +12,7 @@ export const ClientHelloSchema = Type.Object(
     protocolVersion: Type.Literal(PROTOCOL_VERSION),
     name: Type.String({ minLength: 1, maxLength: 18 }),
     specId: SpecIdSchema,
+    practice: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },
 );

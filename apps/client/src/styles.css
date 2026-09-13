@@ -18,6 +18,18 @@ button,
 input {
   font: inherit;
 }
+header button {
+  background: #1c2940;
+  border: 1px solid #455572;
+  border-radius: 5px;
+  padding: 5px 10px;
+}
+meter::-webkit-meter-optimum-value {
+  background: #55d47b;
+}
+meter.mana::-webkit-meter-optimum-value {
+  background: #548cff;
+}
 button {
   color: inherit;
   cursor: pointer;
@@ -121,6 +133,32 @@ input {
   min-height: 0;
   padding: 12px;
 }
+.unit-frames {
+  position: absolute;
+  top: 14px;
+  left: 20px;
+  display: flex;
+  gap: 8px;
+  z-index: 1;
+}
+.unit-frames button {
+  display: grid;
+  gap: 3px;
+  min-width: 145px;
+  padding: 9px;
+  background: #0b1223ed;
+  border: 1px solid #354663;
+  border-radius: 6px;
+  text-align: left;
+}
+.unit-frames button.targeted {
+  border-color: #f7d682;
+}
+.unit-frames span,
+.unit-frames small {
+  font-size: 10px;
+  color: #bfc9db;
+}
 canvas {
   width: min(100%, calc((100vh - 235px) * 1.6667));
   aspect-ratio: 5/3;
@@ -181,7 +219,7 @@ meter {
 }
 .actions {
   display: grid;
-  grid-template-columns: repeat(10, minmax(64px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
   gap: 5px;
   max-width: 1100px;
   margin: auto;
