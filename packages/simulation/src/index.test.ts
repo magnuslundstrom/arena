@@ -15,6 +15,18 @@ const roster: MatchPlayer[] = [
   { id: "d", name: "D", team: 1, specId: "frost-mage" },
 ];
 describe("authoritative match simulation", () => {
+  it("starts one bounded jump and rejects an airborne repeat", () => {
+    const initial = createMatch(roster, 42);
+    const first = advanceTick(initial, [
+      { playerId: "a", sequence: 0, targetTick: 1, kind: "jump" },
+    ]).state;
+    expect(first.players.a?.jumpStartedTick).toBe(1);
+    expect(first.players.a?.jumpUntilTick).toBe(25);
+    const repeated = advanceTick(first, [
+      { playerId: "a", sequence: 1, targetTick: 2, kind: "jump" },
+    ]).state;
+    expect(repeated.players.a?.jumpUntilTick).toBe(25);
+  });
   it("normalizes camera-relative movement so analog vectors cannot increase speed", () => {
     const state = createMatch(roster, 42);
     const result = advanceTick(state, [

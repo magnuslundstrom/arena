@@ -309,19 +309,30 @@ export function mountArena(
           unit = { group, legs, ring, bar, arms, glow, aura };
           units.set(p.id, unit);
         }
-        const destination = new THREE.Vector3(p.x / 25, 0, p.y / 25);
+        const jumping =
+          p.jumpStartedTick !== undefined &&
+          p.jumpUntilTick !== undefined &&
+          p.jumpUntilTick > state.tick;
+        const jumpProgress = jumping
+          ? (state.tick - p.jumpStartedTick!) /
+            Math.max(1, p.jumpUntilTick! - p.jumpStartedTick!)
+          : 0;
+        const jumpHeight = jumping
+          ? Math.sin(Math.PI * THREE.MathUtils.clamp(jumpProgress, 0, 1)) * 2.2
+          : 0;
+        const destination = new THREE.Vector3(p.x / 25, jumpHeight, p.y / 25);
         const motion = destination.clone().sub(unit.group.position);
         if (motion.length() > 4) unit.group.position.copy(destination);
         else unit.group.position.lerp(destination, 1 - Math.exp(-18 * dt));
         if (motion.length() > 0.02)
           unit.group.rotation.y = Math.atan2(motion.x, motion.z);
-        unit.legs.forEach(
-          (leg, i) =>
-            (leg.rotation.x =
-              motion.length() > 0.02
-                ? Math.sin(now * 0.012 + i * Math.PI) * 0.55
-                : 0),
-        );
+        unit.legs.forEach((leg, i) => {
+          leg.rotation.x = jumping
+            ? 0.65 + i * -0.18
+            : motion.length() > 0.02
+              ? Math.sin(now * 0.012 + i * Math.PI) * 0.55
+              : 0;
+        });
         unit.group.rotation.z = p.health <= 0 ? Math.PI / 2 : 0;
         unit.ring.visible = me?.targetId === p.id || p.id === me?.id;
         unit.bar.scale.x = (1.7 * p.health) / SPECS[p.specId].maxHealth;

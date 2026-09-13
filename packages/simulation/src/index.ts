@@ -59,6 +59,8 @@ export type Status =
   | "slow"
   | "stealth";
 export interface PlayerState extends MatchPlayer {
+  readonly jumpStartedTick?: number;
+  readonly jumpUntilTick?: number;
   readonly periodicHealing?: {
     amount: number;
     nextTick: number;
@@ -109,6 +111,7 @@ export type SimulationCommand =
       readonly x: number;
       readonly y: number;
     })
+  | (CommandBase & { readonly kind: "jump" })
   | (CommandBase & { readonly kind: "target"; readonly targetId: string })
   | (CommandBase & {
       readonly kind: "ability";
@@ -332,6 +335,16 @@ function applyCommand(
   const player = players[command.playerId];
   if (!player) return;
   if ((player.statuses.immunity ?? 0) > tick) return;
+  if (command.kind === "jump") {
+    if (controlled(player, tick) || (player.jumpUntilTick ?? 0) > tick) return;
+    players[player.id] = {
+      ...player,
+      cast: undefined,
+      jumpStartedTick: tick,
+      jumpUntilTick: tick + 24,
+    };
+    return;
+  }
   if (command.kind === "target") {
     if ((players[command.targetId]?.health ?? 0) > 0)
       players[player.id] = { ...player, targetId: command.targetId };

@@ -28,6 +28,7 @@ export const PlayerIntentSchema = Type.Object(
         x: Type.Number({ minimum: -2, maximum: 2 }),
         y: Type.Number({ minimum: -2, maximum: 2 }),
       }),
+      Type.Object({ type: Type.Literal("jump") }),
       Type.Object({ type: Type.Literal("target"), targetId: Type.String() }),
       Type.Object({
         type: Type.Literal("ability"),

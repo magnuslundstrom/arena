@@ -140,6 +140,10 @@ function App() {
         const next = enemies[(current + 1) % enemies.length];
         if (next) send({ type: "target", targetId: next.id });
       }
+      if (event.code === "Space") {
+        event.preventDefault();
+        if (!event.repeat) send({ type: "jump" });
+      }
       if (event.repeat) return;
       const index =
         event.key.toLowerCase() === "q"
@@ -355,7 +359,7 @@ function Game(props: {
         aria-label="Third-person arena: hold right mouse to orbit; wheel to zoom"
       />
       <div class="camera-help">
-        WASD move · Right-drag camera · Scroll zoom · Tab target
+        WASD move · Space jump · Right-drag camera · Scroll zoom · Tab target
       </div>
       <Show when={props.state?.phase === "waiting"}>
         <div class="overlay">

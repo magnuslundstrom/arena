@@ -19,6 +19,7 @@ The client runs at `http://localhost:5173`. The game server runs at `http://loca
 Choose **Practice with bots** to play immediately with an allied healer and two opponents. Each practice match is private. **Join match** starts a shared 2v2 match once four players have joined. Controls:
 
 - `WASD`: move
+- `Space`: jump
 - Movement follows the third-person camera. Hold the right mouse button and drag to orbit; scroll to zoom.
 - Click a combatant: select a target
 - `Tab`: cycle enemy targets; unit frames also select targets
