@@ -29,6 +29,11 @@ interface ArenaUnit {
   currentAction?: string;
 }
 
+interface CharacterAsset {
+  scene: THREE.Group;
+  animations: THREE.AnimationClip[];
+}
+
 function playAnimation(unit: ArenaUnit, name: string) {
   if (!unit.actions || unit.currentAction === name) return;
   const next = unit.actions.get(name) ?? unit.actions.get("Idle");
@@ -173,12 +178,12 @@ export function mountArena(
       mesh(new THREE.BoxGeometry(1.6, 5, 1.6), stone, x, 2.5, z);
   const units = new Map<string, ArenaUnit>();
   const effects = createSpellEffects(scene);
-  let wizardScene: THREE.Group | undefined;
-  let wizardAnimations: THREE.AnimationClip[] = [];
+  const characterAssets = new Map<string, CharacterAsset>();
   let disposed = false;
-  function attachWizard(unit: ArenaUnit) {
-    if (!wizardScene || unit.mixer) return;
-    const model = cloneSkeleton(wizardScene);
+  function attachCharacter(unit: ArenaUnit) {
+    const asset = characterAssets.get(unit.specId);
+    if (!asset || unit.mixer) return;
+    const model = cloneSkeleton(asset.scene);
     model.traverse((object) => {
       if (object instanceof THREE.Mesh) {
         object.castShadow = true;
@@ -194,27 +199,33 @@ export function mountArena(
     unit.proxy.visible = false;
     unit.mixer = new THREE.AnimationMixer(model);
     unit.actions = new Map(
-      wizardAnimations.map((clip) => [clip.name, unit.mixer!.clipAction(clip)]),
+      asset.animations.map((clip) => [clip.name, unit.mixer!.clipAction(clip)]),
     );
     const death = unit.actions.get("Death");
     death?.setLoop(THREE.LoopOnce, 1);
     if (death) death.clampWhenFinished = true;
     playAnimation(unit, "Idle");
   }
-  new GLTFLoader().load(
-    "/models/undead-frost-mage/model.gltf",
-    (asset) => {
-      if (disposed) return;
-      wizardScene = asset.scene;
-      wizardAnimations = asset.animations;
-      for (const unit of units.values())
-        if (unit.specId === "frost-mage") attachWizard(unit);
-    },
-    undefined,
-    () => {
-      // The procedural model remains visible as a resilient fallback.
-    },
-  );
+  function loadCharacter(specId: string, path: string) {
+    new GLTFLoader().load(
+      path,
+      (asset) => {
+        if (disposed) return;
+        characterAssets.set(specId, {
+          scene: asset.scene,
+          animations: asset.animations,
+        });
+        for (const unit of units.values())
+          if (unit.specId === specId) attachCharacter(unit);
+      },
+      undefined,
+      () => {
+        // The procedural model remains visible as a resilient fallback.
+      },
+    );
+  }
+  loadCharacter("frost-mage", "/models/undead-frost-mage/model.gltf");
+  loadCharacter("subtlety-rogue", "/models/subtlety-rogue/model.gltf");
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   let pitch = 0.34,
@@ -644,7 +655,7 @@ export function mountArena(
             rootIce,
           };
           units.set(p.id, unit);
-          if (p.specId === "frost-mage") attachWizard(unit);
+          attachCharacter(unit);
         }
         const polymorphed =
           p.health > 0 && (p.statuses.polymorph ?? 0) > state.tick;
@@ -712,6 +723,10 @@ export function mountArena(
         unit.ring.visible = me?.targetId === p.id || p.id === me?.id;
         unit.bar.scale.x = (1.7 * p.health) / SPECS[p.specId].maxHealth;
         const casting = !!p.cast && p.health > 0;
+        const elapsed = (now - (effects.gestures.get(p.id) ?? -10000)) / 1000;
+        const release = elapsed < 0.4 ? Math.sin((elapsed / 0.4) * Math.PI) : 0;
+        const rogueAttacking =
+          p.specId === "subtlety-rogue" && release > 0 && p.health > 0;
         unit.mixer?.update(dt);
         playAnimation(
           unit,
@@ -721,12 +736,14 @@ export function mountArena(
               ? "Spell1"
               : stunned || incapacitated
                 ? "RecieveHit"
-                : feared || jumping || motion.length() > 0.02
-                  ? "Run"
-                  : "Idle",
+                : rogueAttacking
+                  ? "Dagger_Attack"
+                  : feared || jumping || motion.length() > 0.02
+                    ? "Run"
+                    : p.specId === "subtlety-rogue"
+                      ? "Attacking_Idle"
+                      : "Idle",
         );
-        const elapsed = (now - (effects.gestures.get(p.id) ?? -10000)) / 1000;
-        const release = elapsed < 0.4 ? Math.sin((elapsed / 0.4) * Math.PI) : 0;
         unit.arms.forEach((arm, i) => {
           arm.rotation.x = stunned
             ? -0.35
