@@ -82,6 +82,7 @@ export interface PlayerState extends MatchPlayer {
   };
   readonly comboPoints?: number;
   readonly comboTargetId?: string;
+  readonly rootFrostHits?: number | undefined;
   readonly fearSourceId?: string;
   readonly polymorphNextHealTick?: number;
   readonly diminishingReturns?: Readonly<
@@ -725,6 +726,7 @@ function resolveAbility(
       players[sourceId] = {
         ...source,
         ...landing,
+        rootFrostHits: undefined,
         statuses: { ...source.statuses, root: 0, stun: 0 },
       };
     } else if (effect.kind === "reset-cooldowns")
@@ -733,7 +735,11 @@ function resolveAbility(
         cooldowns: { [ability.id]: source.cooldowns[ability.id] ?? tick },
       };
     else if (effect.kind === "dispel" && target)
-      players[target.id] = { ...target, statuses: {} };
+      players[target.id] = {
+        ...target,
+        rootFrostHits: undefined,
+        statuses: {},
+      };
     else if (effect.kind === "shield" && target)
       players[target.id] = {
         ...target,
@@ -768,6 +774,12 @@ function resolveAbility(
           source.specId !== "subtlety-rogue")
       )
         continue;
+      const frostRootHit =
+        (target.statuses.root ?? 0) > tick &&
+        ["frostbolt", "ice-lance", "cone-of-cold"].includes(ability.id);
+      const rootFrostHits =
+        (target.rootFrostHits ?? 0) + (frostRootHit ? 1 : 0);
+      const breaksRoot = frostRootHit && rootFrostHits >= 2;
       const amount =
         ability.id === "eviscerate"
           ? 90 + (source.comboPoints ?? 0) * 70
@@ -788,6 +800,11 @@ function resolveAbility(
       const health = Math.max(0, target.health - dealt);
       players[target.id] = {
         ...target,
+        rootFrostHits: breaksRoot
+          ? undefined
+          : frostRootHit
+            ? rootFrostHits
+            : target.rootFrostHits,
         health,
         mana:
           ability.id === "mana-burn"
@@ -799,6 +816,7 @@ function resolveAbility(
           polymorph: undefined,
           incapacitate: undefined,
           stealth: undefined,
+          root: breaksRoot ? undefined : target.statuses.root,
         },
       };
       if (ability.id === "hemorrhage" || ability.id === "cheap-shot")
@@ -895,6 +913,7 @@ function applyControlStatus(
   const until = tick + Math.floor(duration / (isControl ? 2 ** count : 1));
   players[target.id] = {
     ...target,
+    ...(status === "root" ? { rootFrostHits: 0 } : {}),
     ...(status === "fear" ? { fearSourceId: sourceId } : {}),
     ...(status === "polymorph"
       ? { polymorphNextHealTick: tick + TICKS_PER_SECOND }

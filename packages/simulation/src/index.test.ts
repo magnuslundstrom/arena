@@ -469,6 +469,67 @@ describe("authoritative match simulation", () => {
       ),
     ).toHaveLength(2);
   });
+  it("breaks Frost Nova on the second damaging frost spell", () => {
+    let state = createMatch(roster, 42);
+    state = {
+      ...state,
+      players: {
+        ...state.players,
+        a: { ...state.players.a!, x: 400, y: 600 },
+        c: { ...state.players.c!, x: 600, y: 600, statuses: {} },
+      },
+    };
+    state = advanceTick(state, [
+      {
+        playerId: "a",
+        sequence: 0,
+        targetTick: 1,
+        kind: "ability",
+        abilityId: "frost-nova",
+      },
+    ]).state;
+    expect(state.players.c!.rootFrostHits).toBe(0);
+
+    state = {
+      ...state,
+      players: {
+        ...state.players,
+        a: { ...state.players.a!, globalCooldownUntil: 0 },
+      },
+    };
+    state = advanceTick(state, [
+      {
+        playerId: "a",
+        sequence: 1,
+        targetTick: state.tick + 1,
+        kind: "ability",
+        abilityId: "ice-lance",
+        targetId: "c",
+      },
+    ]).state;
+    expect(state.players.c!.rootFrostHits).toBe(1);
+    expect(state.players.c!.statuses.root).toBeGreaterThan(state.tick);
+
+    state = {
+      ...state,
+      players: {
+        ...state.players,
+        a: { ...state.players.a!, globalCooldownUntil: 0 },
+      },
+    };
+    state = advanceTick(state, [
+      {
+        playerId: "a",
+        sequence: 2,
+        targetTick: state.tick + 1,
+        kind: "ability",
+        abilityId: "ice-lance",
+        targetId: "c",
+      },
+    ]).state;
+    expect(state.players.c!.rootFrostHits).toBeUndefined();
+    expect(state.players.c!.statuses.root).toBeUndefined();
+  });
   it("requires and consumes combo points for a finisher", () => {
     let state = createMatch(roster, 42);
     state = {
