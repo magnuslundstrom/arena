@@ -1,0 +1,20 @@
+{
+  "name": "arena-browser",
+  "private": true,
+  "packageManager": "pnpm@9.5.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "dev": "pnpm --parallel --filter @arena/client --filter @arena/game-server dev",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "3.9.6",
+    "typescript": "7.0.2"
+  }
+}

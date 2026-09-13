@@ -1,0 +1,26 @@
+{
+  "name": "@arena/game-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@arena/protocol": "workspace:*",
+    "@arena/simulation": "workspace:*",
+    "@sinclair/typebox": "0.34.52",
+    "fastify": "5.12.4",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "@arena/config": "workspace:*",
+    "@types/node": "24.10.1",
+    "@types/ws": "8.18.1",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2"
+  }
+}

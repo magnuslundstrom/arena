@@ -1,0 +1,44 @@
+# Arena Browser
+
+A browser-based, real-time 2v2 arena combat game with an authoritative server and an original presentation.
+
+## Requirements
+
+- Node.js 22 or newer
+- pnpm 9.5.0
+
+## Local development
+
+```sh
+pnpm install
+pnpm dev
+```
+
+The client runs at `http://localhost:5173`. The game server runs at `http://localhost:3001`; its health endpoint is `GET /health` and its WebSocket endpoint is `/connect`.
+
+## Verification
+
+```sh
+pnpm format:check
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+## Architecture invariants
+
+- The client sends intent; the game server owns truth.
+- Simulation advances at a fixed 30 Hz and uses integer ticks rather than wall-clock time.
+- `packages/simulation` is pure: no networking, persistence, timers, filesystem, or environment reads.
+- Protocol messages are explicit, runtime-validated, and independently versioned.
+- Simulation inputs have stable ordering, and randomness must come from match-owned seeded state.
+- Live match state stays out of the database hot path; persistence records durable match facts and results.
+- Original names, art, audio, text, maps, and other presentation assets are required.
+
+## Workspace
+
+- `apps/client`: SolidJS/Vite browser shell
+- `apps/game-server`: Fastify HTTP and WebSocket bootstrap
+- `packages/protocol`: shared wire schemas and types
+- `packages/simulation`: deterministic fixed-step simulation seam
+- `packages/config`: strict shared TypeScript configuration

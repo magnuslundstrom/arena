@@ -1,0 +1,20 @@
+{
+  "name": "@arena/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "dev": "vite",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "solid-js": "1.9.15"
+  },
+  "devDependencies": {
+    "@arena/config": "workspace:*",
+    "typescript": "7.0.2",
+    "vite": "8.3.0",
+    "vite-plugin-solid": "2.11.14"
+  }
+}
