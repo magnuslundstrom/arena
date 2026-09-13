@@ -6,8 +6,8 @@ under CC0. The source license is preserved at
 [`docs/licenses/kenney-modular-dungeon-kit.txt`](../licenses/kenney-modular-dungeon-kit.txt).
 
 The authored modules provide alternating stone floor tiles, perimeter wall
-variation, four barred gates, and rings of carved columns around the two arena
-pillars. Their transforms are presentation-only. Server simulation geometry in
+variation, four barred gates, and two solid carved arena pillars. Their transforms
+are presentation-only. Server simulation geometry in
 `packages/simulation` remains authoritative for movement, line of sight, and
 camera collision.
 

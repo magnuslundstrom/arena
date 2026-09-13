@@ -97,21 +97,15 @@ export function mountArenaEnvironment(scene: THREE.Scene) {
 
   load("/models/arena-dungeon/pillar.glb", (asset) => {
     prepare(asset, false);
-    for (const pillar of PILLARS) {
-      const centerX = pillar.x / 25;
-      const centerZ = pillar.y / 25;
-      for (let index = 0; index < 8; index++) {
-        const angle = (index * Math.PI) / 4;
-        place(
-          asset,
-          centerX + Math.cos(angle) * 3.2,
-          0,
-          centerZ + Math.sin(angle) * 3.2,
-          -angle,
-          new THREE.Vector3(0.82, 1.72, 0.82),
-        );
-      }
-    }
+    for (const pillar of PILLARS)
+      place(
+        asset,
+        pillar.x / 25,
+        0,
+        pillar.y / 25,
+        Math.PI / 4,
+        new THREE.Vector3(4.65, 1.72, 4.65),
+      );
   });
 
   return () => {
