@@ -488,7 +488,8 @@ function applyCommand(
     if (controlled(player, tick) || (player.statuses.root ?? 0) > tick) return;
     const speed =
       SPECS[player.specId].speed *
-      ((player.statuses.slow ?? 0) > tick ? 0.5 : 1);
+      ((player.statuses.slow ?? 0) > tick ? 0.5 : 1) *
+      ((player.statuses.stealth ?? 0) > tick ? 0.7 : 1);
     if (!Number.isFinite(command.x) || !Number.isFinite(command.y)) return;
     const scale = 1 / Math.max(1, Math.hypot(command.x, command.y));
     const destination = {

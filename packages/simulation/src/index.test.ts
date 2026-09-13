@@ -37,6 +37,25 @@ describe("authoritative match simulation", () => {
     expect(result.x).toBeGreaterThan(250);
     expect(result.y).toBeGreaterThan(450);
   });
+  it("moves Rogues at seventy percent speed while Stealthed", () => {
+    const initial = createMatch(roster, 42);
+    const stealthed = advanceTick(initial, [
+      { playerId: "c", sequence: 0, targetTick: 1, kind: "move", x: 1, y: 0 },
+    ]).state.players.c!;
+    const visibleState: MatchState = {
+      ...initial,
+      players: {
+        ...initial.players,
+        c: { ...initial.players.c!, statuses: {} },
+      },
+    };
+    const visible = advanceTick(visibleState, [
+      { playerId: "c", sequence: 0, targetTick: 1, kind: "move", x: 1, y: 0 },
+    ]).state.players.c!;
+
+    expect(stealthed.x - initial.players.c!.x).toBe(9);
+    expect(visible.x - initial.players.c!.x).toBe(13);
+  });
   it("forces feared players to flee from the caster instead of accepting movement", () => {
     let state = createMatch(roster, 42);
     state = {
