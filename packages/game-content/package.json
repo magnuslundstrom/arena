@@ -1,5 +1,5 @@
 {
-  "name": "@arena/simulation",
+  "name": "@arena/game-content",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -14,15 +14,10 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "@arena/game-content": "workspace:*"
   },
   "devDependencies": {
     "@arena/config": "workspace:*",
-    "typescript": "7.0.2",
-    "vitest": "5.0.0"
+    "typescript": "7.0.2"
   }
 }

@@ -16,6 +16,15 @@ importers:
 
   apps/client:
     dependencies:
+      "@arena/game-content":
+        specifier: workspace:*
+        version: link:../../packages/game-content
+      "@arena/protocol":
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      "@arena/simulation":
+        specifier: workspace:*
+        version: link:../../packages/simulation
       solid-js:
         specifier: 1.9.15
         version: 1.9.15
@@ -69,6 +78,15 @@ importers:
 
   packages/config: {}
 
+  packages/game-content:
+    devDependencies:
+      "@arena/config":
+        specifier: workspace:*
+        version: link:../config
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
   packages/protocol:
     dependencies:
       "@sinclair/typebox":
@@ -83,6 +101,10 @@ importers:
         version: 7.0.2
 
   packages/simulation:
+    dependencies:
+      "@arena/game-content":
+        specifier: workspace:*
+        version: link:../game-content
     devDependencies:
       "@arena/config":
         specifier: workspace:*

@@ -16,6 +16,14 @@ pnpm dev
 
 The client runs at `http://localhost:5173`. The game server runs at `http://localhost:3001`; its health endpoint is `GET /health` and its WebSocket endpoint is `/connect`.
 
+Open four browser tabs and join the shared room to start a 2v2 match. Controls:
+
+- `WASD`: move
+- Click a combatant: select a target
+- `1`–`0`: use the corresponding ability
+
+The current playable roster is Frost Mage, Subtlety Rogue, and Discipline Priest, with ten abilities per spec. This is an original prototype inspired by the combat structure of classic tab-target arena games; visual presentation and implementation are original.
+
 ## Verification
 
 ```sh
@@ -41,4 +49,5 @@ pnpm build
 - `apps/game-server`: Fastify HTTP and WebSocket bootstrap
 - `packages/protocol`: shared wire schemas and types
 - `packages/simulation`: deterministic fixed-step simulation seam
+- `packages/game-content`: specs, ability definitions, and balance values
 - `packages/config`: strict shared TypeScript configuration

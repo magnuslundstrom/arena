@@ -1,38 +1,66 @@
 import { describe, expect, it } from "vitest";
+import {
+  advanceTick,
+  createMatch,
+  TICKS_PER_SECOND,
+  type MatchPlayer,
+  type SimulationCommand,
+} from "./index.js";
 
-import { advanceTick, createSimulation, TICKS_PER_SECOND } from "./index.js";
-
-describe("fixed-step simulation", () => {
-  it("advances exactly one of thirty ticks per call", () => {
-    const result = advanceTick(createSimulation(42), []);
-
+const roster: MatchPlayer[] = [
+  { id: "a", name: "A", team: 0, specId: "frost-mage" },
+  { id: "b", name: "B", team: 0, specId: "discipline-priest" },
+  { id: "c", name: "C", team: 1, specId: "subtlety-rogue" },
+  { id: "d", name: "D", team: 1, specId: "frost-mage" },
+];
+describe("authoritative match simulation", () => {
+  it("starts a four-player match at 30 Hz", () => {
+    const match = createMatch(roster, 42);
     expect(TICKS_PER_SECOND).toBe(30);
-    expect(result.state.tick).toBe(1);
-    expect(result.state.seed).toBe(42);
+    expect(match.phase).toBe("running");
+    expect(advanceTick(match, []).state.tick).toBe(1);
   });
-
-  it("applies commands in stable order and rejects replayed sequences", () => {
-    const initial = createSimulation(42);
-    const first = advanceTick(initial, [
-      { playerId: "player-b", sequence: 0, targetTick: 1, kind: "move" },
-      { playerId: "player-a", sequence: 1, targetTick: 1, kind: "stop" },
-      { playerId: "player-a", sequence: 0, targetTick: 1, kind: "move" },
+  it("orders intent deterministically and rejects replayed sequences", () => {
+    const command = (sequence: number): SimulationCommand => ({
+      playerId: "a",
+      sequence,
+      targetTick: 1,
+      kind: "move",
+      x: 1,
+      y: 0,
+    });
+    const first = advanceTick(createMatch(roster, 42), [
+      command(1),
+      command(0),
     ]);
-
+    expect(first.appliedCommands.map(({ sequence }) => sequence)).toEqual([
+      0, 1,
+    ]);
     expect(
-      first.appliedCommands.map(({ playerId, sequence }) => [
-        playerId,
-        sequence,
-      ]),
-    ).toEqual([
-      ["player-a", 0],
-      ["player-a", 1],
-      ["player-b", 0],
-    ]);
-
-    const second = advanceTick(first.state, [
-      { playerId: "player-a", sequence: 1, targetTick: 2, kind: "stop" },
-    ]);
-    expect(second.appliedCommands).toEqual([]);
+      advanceTick(first.state, [{ ...command(1), targetTick: 2 }])
+        .appliedCommands,
+    ).toEqual([]);
+  });
+  it("keeps damage server-derived", () => {
+    const initial = createMatch(roster, 42);
+    const closeRange = {
+      ...initial,
+      players: {
+        ...initial.players,
+        c: { ...initial.players.c!, x: 1200 },
+      },
+    };
+    const match = advanceTick(closeRange, [
+      {
+        playerId: "a",
+        sequence: 0,
+        targetTick: 1,
+        kind: "ability",
+        abilityId: "fire-blast",
+        targetId: "c",
+      },
+    ]).state;
+    expect(match.players.c?.health).toBe(1990);
+    expect(match.events.at(-1)?.type).toBe("damage");
   });
 });

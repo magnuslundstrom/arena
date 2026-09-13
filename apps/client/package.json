@@ -9,6 +9,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@arena/game-content": "workspace:*",
+    "@arena/protocol": "workspace:*",
+    "@arena/simulation": "workspace:*",
     "solid-js": "1.9.15"
   },
   "devDependencies": {
