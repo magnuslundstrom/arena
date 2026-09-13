@@ -244,7 +244,7 @@ export function mountArena(
           const humanoid = new THREE.Group();
           group.add(humanoid);
           const cloth = new THREE.MeshStandardMaterial({
-            color: SPECS[p.specId].color,
+            color: p.specId === "frost-mage" ? 0x293b58 : SPECS[p.specId].color,
             roughness: 0.65,
           });
           const dark = new THREE.MeshStandardMaterial({ color: 0x222532 });
@@ -258,7 +258,10 @@ export function mountArena(
           );
           mesh(
             new THREE.SphereGeometry(0.33, 12, 10),
-            new THREE.MeshStandardMaterial({ color: 0xd8b28d }),
+            new THREE.MeshStandardMaterial({
+              color: p.specId === "frost-mage" ? 0xaebdc3 : 0xd8b28d,
+              roughness: 0.82,
+            }),
             0,
             2.22,
             0,
@@ -328,6 +331,125 @@ export function mountArena(
             0.2,
             humanoid,
           );
+          if (p.specId === "frost-mage") {
+            const teal = new THREE.MeshStandardMaterial({
+              color: 0x22576a,
+              roughness: 0.78,
+            });
+            const leather = new THREE.MeshStandardMaterial({
+              color: 0x3a2923,
+              roughness: 0.9,
+            });
+            const frost = new THREE.MeshStandardMaterial({
+              color: 0x77e2ff,
+              emissive: 0x167ca5,
+              emissiveIntensity: 1.5,
+              roughness: 0.15,
+              transparent: true,
+              opacity: 0.92,
+            });
+            const pale = new THREE.MeshBasicMaterial({ color: 0xa7efff });
+
+            const mantle = mesh(
+              new THREE.ConeGeometry(0.88, 0.72, 8, 1, true),
+              teal,
+              0,
+              1.73,
+              -0.08,
+              humanoid,
+            );
+            mantle.rotation.y = Math.PI / 8;
+            mantle.scale.z = 0.72;
+            const scarf = mesh(
+              new THREE.TorusGeometry(0.39, 0.12, 7, 16),
+              teal,
+              0,
+              2.02,
+              0,
+              humanoid,
+            );
+            scarf.rotation.x = Math.PI / 2;
+            mesh(
+              new THREE.BoxGeometry(1.18, 0.16, 0.62),
+              leather,
+              0,
+              1.12,
+              0.02,
+              humanoid,
+            );
+            for (const x of [-0.28, 0.28])
+              mesh(
+                new THREE.BoxGeometry(0.48, 0.82, 0.12),
+                teal,
+                x,
+                0.83,
+                0.26,
+                humanoid,
+              );
+            mesh(
+              new THREE.BoxGeometry(0.32, 0.38, 0.28),
+              leather,
+              0.53,
+              0.92,
+              0.36,
+              humanoid,
+            );
+            for (const x of [-0.13, 0.13])
+              mesh(
+                new THREE.SphereGeometry(0.045, 8, 6),
+                pale,
+                x,
+                2.27,
+                0.31,
+                humanoid,
+              );
+            const hair = new THREE.MeshStandardMaterial({
+              color: 0xd9e0e8,
+              roughness: 0.75,
+            });
+            for (let i = 0; i < 7; i++) {
+              const angle = -1.2 + i * 0.4;
+              const lock = mesh(
+                new THREE.ConeGeometry(0.1, 0.48 + (i % 2) * 0.12, 5),
+                hair,
+                Math.sin(angle) * 0.24,
+                2.58 + Math.cos(angle) * 0.06,
+                -0.08 - Math.cos(angle) * 0.2,
+                humanoid,
+              );
+              lock.rotation.z = Math.sin(angle) * 0.55;
+              lock.rotation.x = -0.45;
+            }
+            for (const arm of arms) {
+              mesh(
+                new THREE.CylinderGeometry(0.2, 0.2, 0.34, 8),
+                leather,
+                0,
+                -0.57,
+                0,
+                arm,
+              );
+            }
+            mesh(
+              new THREE.OctahedronGeometry(0.3, 0),
+              frost,
+              0.8,
+              2.66,
+              0.2,
+              humanoid,
+            );
+            for (const x of [0.57, 1.03]) {
+              const tine = mesh(
+                new THREE.ConeGeometry(0.07, 0.62, 5),
+                leather,
+                x,
+                2.48,
+                0.2,
+                humanoid,
+              );
+              tine.rotation.z = x < 0.8 ? -0.35 : 0.35;
+            }
+          }
           const sheep = new THREE.Group();
           sheep.visible = false;
           group.add(sheep);
