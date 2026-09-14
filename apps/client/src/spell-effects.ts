@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { MatchState } from "@arena/simulation";
+import { playAbilitySound } from "./ability-audio";
 
 export function spellColor(id: string) {
   if (/heal|renew|mending|shield|suppression|dispel/.test(id)) return 0xffe99a;
@@ -16,6 +17,15 @@ export function createSpellEffects(scene: THREE.Scene) {
   scene.add(root);
   const sphere = new THREE.SphereGeometry(1, 8, 6);
   const ring = new THREE.TorusGeometry(1, 0.045, 6, 36);
+  const coneWave = new THREE.RingGeometry(
+    0.12,
+    1,
+    32,
+    1,
+    -Math.PI / 4,
+    Math.PI / 2,
+  );
+  coneWave.rotateX(-Math.PI / 2);
   const active: {
     mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
     start: THREE.Vector3;
@@ -23,7 +33,7 @@ export function createSpellEffects(scene: THREE.Scene) {
     age: number;
     life: number;
     size: number;
-    type: "bolt" | "particle" | "ring";
+    type: "bolt" | "particle" | "ring" | "nova" | "cone";
     color: number;
   }[] = [];
   const combatText: {
@@ -81,14 +91,14 @@ export function createSpellEffects(scene: THREE.Scene) {
     });
   }
   function spawn(
-    type: "bolt" | "particle" | "ring",
+    type: "bolt" | "particle" | "ring" | "nova" | "cone",
     start: THREE.Vector3,
     end: THREE.Vector3,
     color: number,
     size: number,
     life: number,
   ) {
-    if (active.length >= 240) return;
+    if (active.length >= 240) return undefined;
     const material = new THREE.MeshBasicMaterial({
       color,
       transparent: true,
@@ -96,10 +106,16 @@ export function createSpellEffects(scene: THREE.Scene) {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-    const mesh = new THREE.Mesh(type === "ring" ? ring : sphere, material);
+    const geometry =
+      type === "cone"
+        ? coneWave
+        : type === "ring" || type === "nova"
+          ? ring
+          : sphere;
+    const mesh = new THREE.Mesh(geometry, material);
     mesh.position.copy(start);
     mesh.scale.setScalar(size);
-    if (type === "ring") mesh.rotation.x = Math.PI / 2;
+    if (type === "ring" || type === "nova") mesh.rotation.x = Math.PI / 2;
     root.add(mesh);
     active.push({
       mesh,
@@ -111,6 +127,7 @@ export function createSpellEffects(scene: THREE.Scene) {
       type,
       color,
     });
+    return mesh;
   }
   function burst(position: THREE.Vector3, color: number) {
     for (let i = 0; i < 12; i++) {
@@ -149,9 +166,60 @@ export function createSpellEffects(scene: THREE.Scene) {
           const to = target
             ? new THREE.Vector3(target.x / 25, 1.4, target.y / 25)
             : from;
-          if (event.type === "ability" && source && from && to) {
+          if (
+            event.type === "damage" &&
+            id.startsWith("auto-attack-") &&
+            source
+          )
             gestures.set(source.id, { at: now, abilityId: id });
-            if (
+          if (event.type === "ability" && source && from && to) {
+            const pan = Math.max(-1, Math.min(1, (source.x - 1500) / 1500));
+            const distance = Math.hypot(source.x - 1500, source.y - 1000);
+            playAbilitySound(id, pan, Math.max(0.45, 1 - distance / 4000));
+            gestures.set(source.id, { at: now, abilityId: id });
+            if (id === "frost-nova") {
+              burst(from, color);
+              spawn(
+                "nova",
+                from.clone().setY(0.12),
+                from.clone().setY(0.12),
+                color,
+                28,
+                0.72,
+              );
+            } else if (id === "cone-of-cold") {
+              const dx = source.facingX;
+              const dz = source.facingY;
+              const effectStart = from.clone().setY(0.1);
+              const wave = spawn(
+                "cone",
+                effectStart,
+                effectStart,
+                color,
+                17.2,
+                0.58,
+              );
+              if (wave) wave.rotation.y = -Math.atan2(dz, dx);
+              for (let i = -3; i <= 3; i++) {
+                const angle = Math.atan2(dz, dx) + (i * Math.PI) / 24;
+                spawn(
+                  "particle",
+                  from,
+                  from
+                    .clone()
+                    .add(
+                      new THREE.Vector3(
+                        Math.cos(angle) * 16.4,
+                        0.15 + Math.abs(i) * 0.08,
+                        Math.sin(angle) * 16.4,
+                      ),
+                    ),
+                  color,
+                  0.15,
+                  0.55,
+                );
+              }
+            } else if (
               /bolt|lance|fire-blast|shadow-word-death/.test(id) &&
               from.distanceTo(to) > 2
             )
@@ -206,9 +274,11 @@ export function createSpellEffects(scene: THREE.Scene) {
         effect.mesh.position.lerpVectors(effect.start, effect.end, t);
         effect.mesh.material.opacity = (1 - t) * 0.9;
         effect.mesh.scale.setScalar(
-          effect.type === "ring"
-            ? effect.size * (1 + t * 2)
-            : effect.size * (1 - t * 0.6),
+          effect.type === "nova" || effect.type === "cone"
+            ? effect.size * t
+            : effect.type === "ring"
+              ? effect.size * (1 + t * 2)
+              : effect.size * (1 - t * 0.6),
         );
         if (t >= 1) {
           root.remove(effect.mesh);
@@ -248,6 +318,7 @@ export function createSpellEffects(scene: THREE.Scene) {
       }
       sphere.dispose();
       ring.dispose();
+      coneWave.dispose();
       scene.remove(root);
     },
   };

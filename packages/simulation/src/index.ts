@@ -7,6 +7,11 @@ import {
 
 export const TICKS_PER_SECOND = 30 as const;
 export const TICK_DURATION_MS = 1_000 / TICKS_PER_SECOND;
+export const ROGUE_ENERGY_PER_TICK = 20 as const;
+export const ROGUE_ENERGY_TICK_INTERVAL = TICKS_PER_SECOND * 2;
+export const COMBAT_DURATION_TICKS = TICKS_PER_SECOND * 8;
+export const ROGUE_MAIN_HAND_SWING_TICKS = Math.round(TICKS_PER_SECOND * 2.6);
+export const ROGUE_OFF_HAND_SWING_TICKS = Math.round(TICKS_PER_SECOND * 1.4);
 export const ARENA_WIDTH = 2_000;
 export const ARENA_HEIGHT = 1_200;
 export const PILLARS = [
@@ -58,6 +63,7 @@ export interface CastState {
   readonly targetId?: string;
   readonly point?: Point;
   readonly completesAtTick: number;
+  readonly pushbackCount?: number;
 }
 export type Status =
   | "immunity"
@@ -72,13 +78,19 @@ export type Status =
   | "silence"
   | "slow"
   | "stealth";
+type DiminishingCategory = Status | "kidney-shot";
 export interface PlayerState extends MatchPlayer {
+  readonly autoAttackTargetId?: string | undefined;
+  readonly nextMainHandSwingTick?: number | undefined;
+  readonly nextOffHandSwingTick?: number | undefined;
+  readonly combatUntilTick?: number;
   readonly jumpStartedTick?: number;
   readonly jumpUntilTick?: number;
   readonly periodicHealing?: {
     amount: number;
     nextTick: number;
     ticksLeft: number;
+    sourceId: string;
   };
   readonly comboPoints?: number;
   readonly comboTargetId?: string;
@@ -86,18 +98,31 @@ export interface PlayerState extends MatchPlayer {
   readonly fearSourceId?: string;
   readonly polymorphNextHealTick?: number;
   readonly diminishingReturns?: Readonly<
-    Partial<Record<Status, { count: number; resetsAt: number }>>
+    Partial<Record<DiminishingCategory, { count: number; resetsAt: number }>>
   >;
   readonly x: number;
   readonly y: number;
+  readonly facingX: number;
+  readonly facingY: number;
   readonly health: number;
   readonly mana: number;
   readonly shield: number;
+  readonly shieldAbility?:
+    | {
+        readonly abilityId: string;
+        readonly specId: SpecId;
+      }
+    | undefined;
   readonly targetId?: string;
   readonly cast?: CastState | undefined;
   readonly globalCooldownUntil: number;
   readonly cooldowns: Readonly<Record<string, number>>;
   readonly statuses: Readonly<Partial<Record<Status, number | undefined>>>;
+  readonly statusAbilities?: Readonly<
+    Partial<
+      Record<Status, { readonly abilityId: string; readonly specId: SpecId }>
+    >
+  >;
   readonly lastSequence: number;
 }
 export interface CombatEvent {
@@ -114,8 +139,15 @@ export interface MatchState {
   readonly seed: number;
   readonly phase: "waiting" | "running" | "finished";
   readonly winnerTeam?: 0 | 1;
+  readonly map?: "arena" | "playground";
   readonly players: Readonly<Record<string, PlayerState>>;
+  readonly stats: Readonly<Record<string, PlayerMatchStats>>;
   readonly events: readonly CombatEvent[];
+}
+export interface PlayerMatchStats {
+  readonly damageDone: number;
+  readonly healingDone: number;
+  readonly killingBlows: number;
 }
 interface CommandBase {
   readonly playerId: string;
@@ -160,6 +192,8 @@ export function createMatch(
       ...player,
       x: player.team === 0 ? 250 : ARENA_WIDTH - 250,
       y: 450 + slot * 300,
+      facingX: player.team === 0 ? 1 : -1,
+      facingY: 0,
       health: spec.maxHealth,
       mana: spec.maxMana,
       shield: 0,
@@ -177,6 +211,12 @@ export function createMatch(
     seed,
     phase: roster.length === 4 ? "running" : "waiting",
     players,
+    stats: Object.fromEntries(
+      roster.map((player) => [
+        player.id,
+        { damageDone: 0, healingDone: 0, killingBlows: 0 },
+      ]),
+    ),
     events: [],
   };
 }
@@ -189,27 +229,44 @@ export function advanceTick(
   const tick = state.tick + 1;
   const players = clonePlayers(state.players);
   const events: CombatEvent[] = [];
-  const moved = new Set<string>();
-  const appliedCommands = commands
+  const applicableCommands = commands
     .filter((c) => c.targetTick <= tick)
-    .sort(compareCommands)
-    .filter((command) => {
-      const player = players[command.playerId];
-      if (
-        !player ||
-        command.sequence <= player.lastSequence ||
-        player.health <= 0
-      )
-        return false;
-      players[command.playerId] = { ...player, lastSequence: command.sequence };
-      if (command.kind === "move") {
-        if (moved.has(command.playerId)) return false;
-        moved.add(command.playerId);
-      }
-      applyCommand(players, command, tick, events);
+    .sort(compareCommands);
+  const commandsByPlayer = new Map<string, SimulationCommand[]>();
+  for (const command of applicableCommands) {
+    const playerCommands = commandsByPlayer.get(command.playerId) ?? [];
+    playerCommands.push(command);
+    commandsByPlayer.set(command.playerId, playerCommands);
+  }
+  const appliedCommands: SimulationCommand[] = [];
+  for (const [playerId, playerCommands] of commandsByPlayer) {
+    const player = players[playerId];
+    if (!player || player.health <= 0) continue;
+    let lastSequence = player.lastSequence;
+    let acceptedMove = false;
+    const accepted = playerCommands.filter((command) => {
+      if (command.sequence <= lastSequence) return false;
+      lastSequence = command.sequence;
+      if (command.kind !== "move") return true;
+      if (acceptedMove) return false;
+      acceptedMove = true;
       return true;
     });
+    players[playerId] = { ...player, lastSequence };
+    accepted.sort((a, b) =>
+      a.kind === "move" && b.kind !== "move"
+        ? 1
+        : a.kind !== "move" && b.kind === "move"
+          ? -1
+          : a.sequence - b.sequence,
+    );
+    for (const command of accepted) {
+      applyCommand(players, command, tick, events);
+      appliedCommands.push(command);
+    }
+  }
   completeCasts(players, tick, events);
+  performAutoAttacks(players, tick, events);
   moveFearedPlayers(players, tick, state.seed);
   regeneratePolymorphedPlayers(players, tick, events);
   for (const player of Object.values(players)) {
@@ -232,18 +289,33 @@ export function advanceTick(
     events.push({
       tick,
       type: "heal",
+      sourceId: hot.sourceId,
       targetId: player.id,
       amount,
       text: `Renew healed ${amount}`,
     });
   }
-  regenerate(players);
+  regenerate(players, tick);
   const alive = [0, 1].map((team) =>
     Object.values(players).some(
       (player) => player.team === team && player.health > 0,
     ),
   );
   const winnerTeam = !alive[0] ? 1 : !alive[1] ? 0 : undefined;
+  const stats = { ...state.stats };
+  for (const event of events) {
+    if (!event.sourceId || !stats[event.sourceId]) continue;
+    const previous = stats[event.sourceId]!;
+    stats[event.sourceId] = {
+      damageDone:
+        previous.damageDone +
+        (event.type === "damage" ? (event.amount ?? 0) : 0),
+      healingDone:
+        previous.healingDone +
+        (event.type === "heal" ? (event.amount ?? 0) : 0),
+      killingBlows: previous.killingBlows + (event.type === "death" ? 1 : 0),
+    };
+  }
   return {
     state: {
       tick,
@@ -251,6 +323,7 @@ export function advanceTick(
       phase: winnerTeam === undefined ? state.phase : "finished",
       ...(winnerTeam === undefined ? {} : { winnerTeam }),
       players,
+      stats,
       events,
     },
     appliedCommands,
@@ -469,6 +542,11 @@ function applyCommand(
     }
     return;
   }
+  if (command.kind === "target") {
+    if ((players[command.targetId]?.health ?? 0) > 0)
+      players[player.id] = { ...player, targetId: command.targetId };
+    return;
+  }
   if ((player.statuses.immunity ?? 0) > tick) return;
   if (command.kind === "jump") {
     if (controlled(player, tick) || (player.jumpUntilTick ?? 0) > tick) return;
@@ -478,11 +556,6 @@ function applyCommand(
       jumpStartedTick: tick,
       jumpUntilTick: tick + 24,
     };
-    return;
-  }
-  if (command.kind === "target") {
-    if ((players[command.targetId]?.health ?? 0) > 0)
-      players[player.id] = { ...player, targetId: command.targetId };
     return;
   }
   if (command.kind === "move") {
@@ -505,6 +578,9 @@ function applyCommand(
     players[player.id] = {
       ...player,
       ...destination,
+      ...(command.x !== 0 || command.y !== 0
+        ? { facingX: command.x * scale, facingY: command.y * scale }
+        : {}),
       cast: undefined,
     };
     return;
@@ -537,6 +613,7 @@ function applyCommand(
       (target.statuses.stealth ?? 0) > tick &&
       distance(player, target) > 160) ||
     (ability.id === "cheap-shot" && (player.statuses.stealth ?? 0) <= tick) ||
+    (ability.id === "stealth" && (player.combatUntilTick ?? 0) > tick) ||
     (["kidney-shot", "eviscerate"].includes(ability.id) &&
       (!player.comboPoints || player.comboTargetId !== target?.id)) ||
     (target && !hasLineOfSight(player, target)) ||
@@ -557,6 +634,35 @@ function applyCommand(
         ? { stealth: 0 }
         : {}),
     },
+    ...(target && target.id !== player.id
+      ? {
+          facingX:
+            (target.x - player.x) /
+            Math.max(1, Math.hypot(target.x - player.x, target.y - player.y)),
+          facingY:
+            (target.y - player.y) /
+            Math.max(1, Math.hypot(target.x - player.x, target.y - player.y)),
+        }
+      : {}),
+    ...(ability.id === "gouge"
+      ? {
+          autoAttackTargetId: undefined,
+          nextMainHandSwingTick: undefined,
+          nextOffHandSwingTick: undefined,
+        }
+      : player.specId === "subtlety-rogue" &&
+          ability.target === "enemy" &&
+          ability.id !== "shadowstep" &&
+          target
+        ? {
+            autoAttackTargetId: target.id,
+            nextMainHandSwingTick:
+              player.nextMainHandSwingTick ??
+              tick + ROGUE_MAIN_HAND_SWING_TICKS,
+            nextOffHandSwingTick:
+              player.nextOffHandSwingTick ?? tick + ROGUE_OFF_HAND_SWING_TICKS,
+          }
+        : {}),
   };
   if (ability.castTicks > 0)
     players[player.id] = {
@@ -590,7 +696,7 @@ function resolveTarget(
 ) {
   return ability.target === "self"
     ? players[player.id]
-    : ability.target === "enemy-area"
+    : ability.target === "enemy-area" || ability.target === "enemy-cone"
       ? players[player.id]
       : players[targetId ?? player.targetId ?? ""];
 }
@@ -602,16 +708,75 @@ function validTarget(
   if (
     ability.target === "point" ||
     ability.target === "self" ||
-    ability.target === "enemy-area"
+    ability.target === "enemy-area" ||
+    ability.target === "enemy-cone"
   )
     return true;
   return (
     !!target &&
     target.health > 0 &&
-    (ability.target === "ally"
-      ? target.team === player.team
-      : target.team !== player.team)
+    (ability.target === "any"
+      ? true
+      : ability.target === "ally"
+        ? target.team === player.team
+        : target.team !== player.team)
   );
+}
+
+const HARMFUL_DISPEL_ORDER: readonly Status[] = [
+  "polymorph",
+  "fear",
+  "stun",
+  "incapacitate",
+  "silence",
+  "root",
+  "slow",
+];
+const BENEFICIAL_DISPEL_ORDER: readonly Status[] = [
+  "immunity",
+  "damage-reduction",
+  "cloak",
+  "evasion",
+  "stealth",
+];
+
+function dispelOne(
+  target: PlayerState,
+  friendly: boolean,
+  tick: number,
+): PlayerState {
+  if (friendly) {
+    const status = HARMFUL_DISPEL_ORDER.find(
+      (entry) => (target.statuses[entry] ?? 0) > tick,
+    );
+    if (!status) return target;
+    const dispelled: PlayerState = {
+      ...target,
+      statuses: { ...target.statuses, [status]: undefined },
+      ...(status === "root" ? { rootFrostHits: undefined } : {}),
+    };
+    if (status === "fear") {
+      const { fearSourceId: _removed, ...withoutFearSource } = dispelled;
+      return withoutFearSource;
+    }
+    if (status === "polymorph") {
+      const { polymorphNextHealTick: _removed, ...withoutPolymorphHeal } =
+        dispelled;
+      return withoutPolymorphHeal;
+    }
+    return dispelled;
+  }
+  if (target.periodicHealing) {
+    const { periodicHealing: _removed, ...withoutPeriodicHealing } = target;
+    return withoutPeriodicHealing;
+  }
+  if (target.shield > 0) return { ...target, shield: 0 };
+  const status = BENEFICIAL_DISPEL_ORDER.find(
+    (entry) => (target.statuses[entry] ?? 0) > tick,
+  );
+  return status
+    ? { ...target, statuses: { ...target.statuses, [status]: undefined } }
+    : target;
 }
 function completeCasts(
   players: Record<string, PlayerState>,
@@ -698,186 +863,263 @@ function resolveAbility(
       }
       continue;
     }
-    if (effect.kind === "teleport") {
-      const destination =
-        point ??
-        (target
-          ? { x: target.x + (target.team === 0 ? 100 : -100), y: target.y }
-          : source);
-      const length = distance(source, destination);
-      const ratio = Math.min(1, ability.range / Math.max(1, length));
-      const landing = {
-        x: Math.round(
-          clamp(
-            source.x + (destination.x - source.x) * ratio,
-            35,
-            ARENA_WIDTH - 35,
-          ),
-        ),
-        y: Math.round(
-          clamp(
-            source.y + (destination.y - source.y) * ratio,
-            35,
-            ARENA_HEIGHT - 35,
-          ),
-        ),
-      };
-      if (!walkable(landing)) continue;
-      players[sourceId] = {
-        ...source,
-        ...landing,
-        rootFrostHits: undefined,
-        statuses: { ...source.statuses, root: 0, stun: 0 },
-      };
-    } else if (effect.kind === "reset-cooldowns")
-      players[sourceId] = {
-        ...source,
-        cooldowns: { [ability.id]: source.cooldowns[ability.id] ?? tick },
-      };
-    else if (effect.kind === "dispel" && target)
-      players[target.id] = {
-        ...target,
-        rootFrostHits: undefined,
-        statuses: {},
-      };
-    else if (effect.kind === "shield" && target)
-      players[target.id] = {
-        ...target,
-        shield: Math.max(target.shield, effect.amount ?? 0),
-      };
-    else if (effect.kind === "heal" && target) {
-      if (ability.id === "renew") {
-        players[target.id] = {
-          ...target,
-          periodicHealing: { amount: 110, nextTick: tick + 90, ticksLeft: 5 },
-        };
-        continue;
+    if (ability.target === "enemy-cone") {
+      const facingX = source.facingX;
+      const facingY = source.facingY;
+      const facingLength = Math.max(1, Math.hypot(facingX, facingY));
+      const halfAngleCos = Math.cos(Math.PI / 4);
+      for (const coneTarget of Object.values(players)) {
+        const dx = coneTarget.x - source.x;
+        const dy = coneTarget.y - source.y;
+        const targetDistance = Math.hypot(dx, dy);
+        if (
+          coneTarget.team === source.team ||
+          coneTarget.health <= 0 ||
+          targetDistance > ability.range ||
+          targetDistance === 0 ||
+          (dx * facingX + dy * facingY) / (targetDistance * facingLength) <
+            halfAngleCos ||
+          !hasLineOfSight(source, coneTarget) ||
+          (coneTarget.statuses.immunity ?? 0) > tick ||
+          (coneTarget.statuses.cloak ?? 0) > tick
+        )
+          continue;
+        applyEffect(
+          players,
+          sourceId,
+          coneTarget.id,
+          ability,
+          effect,
+          tick,
+          events,
+        );
       }
-      const amount = Math.min(
-        effect.amount ?? 0,
-        SPECS[target.specId].maxHealth - target.health,
-      );
-      players[target.id] = { ...target, health: target.health + amount };
-      events.push({
-        tick,
-        type: "heal",
-        sourceId,
-        targetId: target.id,
-        amount,
-        abilityId: ability.id,
-        text: `${ability.name} healed ${amount}`,
-      });
-    } else if (effect.kind === "damage" && target) {
-      if (
-        (target.statuses.immunity ?? 0) > tick ||
-        ((target.statuses.cloak ?? 0) > tick &&
-          source.specId !== "subtlety-rogue")
-      )
-        continue;
-      const frostRootHit =
-        (target.statuses.root ?? 0) > tick &&
-        ["frostbolt", "ice-lance", "cone-of-cold"].includes(ability.id);
-      const rootFrostHits =
-        (target.rootFrostHits ?? 0) + (frostRootHit ? 1 : 0);
-      const breaksRoot = frostRootHit && rootFrostHits >= 2;
-      const amount =
-        ability.id === "eviscerate"
-          ? 90 + (source.comboPoints ?? 0) * 70
-          : ability.id === "ice-lance" && (target.statuses.root ?? 0) > tick
-            ? (effect.amount ?? 0) * 3
-            : (effect.amount ?? 0);
-      const mitigated = Math.round(
-        amount *
-          ((target.statuses[
-            source.specId === "subtlety-rogue" ? "evasion" : "immunity"
-          ] ?? 0) > tick
-            ? 0.5
-            : 1) *
-          ((target.statuses["damage-reduction"] ?? 0) > tick ? 0.6 : 1),
-      );
-      const absorbed = Math.min(target.shield, mitigated);
-      const dealt = mitigated - absorbed;
-      const health = Math.max(0, target.health - dealt);
+      continue;
+    }
+    applyEffect(
+      players,
+      sourceId,
+      target?.id,
+      ability,
+      effect,
+      tick,
+      events,
+      point,
+    );
+  }
+}
+
+function applyEffect(
+  players: Record<string, PlayerState>,
+  sourceId: string,
+  targetId: string | undefined,
+  ability: AbilityDefinition,
+  effect: AbilityDefinition["effects"][number],
+  tick: number,
+  events: CombatEvent[],
+  point?: Point,
+) {
+  let source = players[sourceId];
+  let target = players[targetId ?? sourceId];
+  if (!source) return;
+  if (effect.kind === "teleport") {
+    const destination =
+      point ??
+      (target
+        ? { x: target.x + (target.team === 0 ? 40 : -40), y: target.y }
+        : source);
+    const length = distance(source, destination);
+    const ratio = Math.min(1, ability.range / Math.max(1, length));
+    const landing = {
+      x: Math.round(
+        clamp(
+          source.x + (destination.x - source.x) * ratio,
+          35,
+          ARENA_WIDTH - 35,
+        ),
+      ),
+      y: Math.round(
+        clamp(
+          source.y + (destination.y - source.y) * ratio,
+          35,
+          ARENA_HEIGHT - 35,
+        ),
+      ),
+    };
+    if (!walkable(landing)) return;
+    players[sourceId] = {
+      ...source,
+      ...landing,
+      rootFrostHits: undefined,
+      statuses: { ...source.statuses, root: 0, stun: 0 },
+    };
+  } else if (effect.kind === "reset-cooldowns")
+    players[sourceId] = {
+      ...source,
+      cooldowns: { [ability.id]: source.cooldowns[ability.id] ?? tick },
+    };
+  else if (effect.kind === "dispel" && target)
+    players[target.id] = dispelOne(target, target.team === source.team, tick);
+  else if (effect.kind === "shield" && target)
+    players[target.id] = {
+      ...target,
+      shield: Math.max(target.shield, effect.amount ?? 0),
+      shieldAbility:
+        (effect.amount ?? 0) >= target.shield
+          ? { abilityId: ability.id, specId: source.specId }
+          : target.shieldAbility,
+    };
+  else if (effect.kind === "heal" && target) {
+    if (ability.id === "renew") {
       players[target.id] = {
         ...target,
-        rootFrostHits: breaksRoot
-          ? undefined
-          : frostRootHit
-            ? rootFrostHits
-            : target.rootFrostHits,
-        health,
-        mana:
-          ability.id === "mana-burn"
-            ? Math.max(0, target.mana - 300)
-            : target.mana,
-        shield: target.shield - absorbed,
-        statuses: {
-          ...target.statuses,
-          polymorph: undefined,
-          incapacitate: undefined,
-          stealth: undefined,
-          root: breaksRoot ? undefined : target.statuses.root,
+        periodicHealing: {
+          amount: 110,
+          nextTick: tick + 90,
+          ticksLeft: 5,
+          sourceId,
         },
       };
-      if (ability.id === "hemorrhage" || ability.id === "cheap-shot")
-        players[sourceId] = {
-          ...players[sourceId]!,
-          comboTargetId: target.id,
-          comboPoints: Math.min(
-            5,
-            (source.comboTargetId === target.id
-              ? (source.comboPoints ?? 0)
-              : 0) + (ability.id === "cheap-shot" ? 2 : 1),
-          ),
-        };
-      if (ability.id === "eviscerate")
-        players[sourceId] = { ...players[sourceId]!, comboPoints: 0 };
+      return;
+    }
+    const amount = Math.min(
+      effect.amount ?? 0,
+      SPECS[target.specId].maxHealth - target.health,
+    );
+    players[target.id] = { ...target, health: target.health + amount };
+    events.push({
+      tick,
+      type: "heal",
+      sourceId,
+      targetId: target.id,
+      amount,
+      abilityId: ability.id,
+      text: `${ability.name} healed ${amount}`,
+    });
+  } else if (effect.kind === "damage" && target) {
+    if (
+      (target.statuses.immunity ?? 0) > tick ||
+      ((target.statuses.cloak ?? 0) > tick &&
+        source.specId !== "subtlety-rogue")
+    )
+      return;
+    const frostRootHit =
+      (target.statuses.root ?? 0) > tick &&
+      ["frostbolt", "ice-lance", "cone-of-cold"].includes(ability.id);
+    const rootFrostHits = (target.rootFrostHits ?? 0) + (frostRootHit ? 1 : 0);
+    const breaksRoot = frostRootHit && rootFrostHits >= 2;
+    const amount =
+      ability.id === "eviscerate"
+        ? 90 + (source.comboPoints ?? 0) * 70
+        : ability.id === "ice-lance" && (target.statuses.root ?? 0) > tick
+          ? (effect.amount ?? 0) * 3
+          : (effect.amount ?? 0);
+    const mitigated = Math.round(
+      amount *
+        ((target.statuses[
+          source.specId === "subtlety-rogue" ? "evasion" : "immunity"
+        ] ?? 0) > tick
+          ? 0.5
+          : 1) *
+        ((target.statuses["damage-reduction"] ?? 0) > tick ? 0.6 : 1),
+    );
+    const absorbed = Math.min(target.shield, mitigated);
+    const dealt = mitigated - absorbed;
+    const effectiveDamage = Math.min(target.health, dealt);
+    const health = Math.max(0, target.health - dealt);
+    players[target.id] = {
+      ...target,
+      ...(effectiveDamage > 0
+        ? { combatUntilTick: tick + COMBAT_DURATION_TICKS }
+        : {}),
+      rootFrostHits: breaksRoot
+        ? undefined
+        : frostRootHit
+          ? rootFrostHits
+          : target.rootFrostHits,
+      health,
+      ...(effectiveDamage > 0
+        ? {
+            cast: applySpellPushback(target, tick, sourceId, ability.id),
+          }
+        : {}),
+      mana:
+        ability.id === "mana-burn"
+          ? Math.max(0, target.mana - 300)
+          : target.mana,
+      shield: target.shield - absorbed,
+      shieldAbility:
+        target.shield - absorbed > 0 ? target.shieldAbility : undefined,
+      statuses: {
+        ...target.statuses,
+        polymorph: undefined,
+        incapacitate: undefined,
+        stealth: undefined,
+        root: breaksRoot ? undefined : target.statuses.root,
+      },
+    };
+    if (effectiveDamage > 0)
+      players[sourceId] = {
+        ...players[sourceId]!,
+        combatUntilTick: tick + COMBAT_DURATION_TICKS,
+      };
+    if (ability.id === "hemorrhage" || ability.id === "cheap-shot")
+      players[sourceId] = {
+        ...players[sourceId]!,
+        comboTargetId: target.id,
+        comboPoints: Math.min(
+          5,
+          (source.comboTargetId === target.id ? (source.comboPoints ?? 0) : 0) +
+            (ability.id === "cheap-shot" ? 2 : 1),
+        ),
+      };
+    if (ability.id === "eviscerate")
+      players[sourceId] = { ...players[sourceId]!, comboPoints: 0 };
+    events.push({
+      tick,
+      type: "damage",
+      sourceId,
+      targetId: target.id,
+      amount: effectiveDamage,
+      abilityId: ability.id,
+      text: `${ability.name} dealt ${effectiveDamage}`,
+    });
+    if (health === 0)
       events.push({
         tick,
-        type: "damage",
+        type: "death",
         sourceId,
         targetId: target.id,
-        amount: dealt,
-        abilityId: ability.id,
-        text: `${ability.name} dealt ${dealt}`,
+        text: `${target.name} was defeated`,
       });
-      if (health === 0)
-        events.push({
-          tick,
-          type: "death",
-          sourceId,
-          targetId: target.id,
-          text: `${target.name} was defeated`,
-        });
-    } else if (
-      target &&
-      [
-        "stun",
-        "fear",
-        "polymorph",
-        "incapacitate",
-        "root",
-        "silence",
-        "slow",
-        "stealth",
-        "immunity",
-        "damage-reduction",
-        "evasion",
-        "cloak",
-      ].includes(effect.kind)
-    ) {
-      const status = effect.kind as Status;
-      applyControlStatus(
-        players,
-        sourceId,
-        target.id,
-        status,
-        ability,
-        effect.durationTicks ?? 0,
-        tick,
-        events,
-      );
-    }
+  } else if (
+    target &&
+    [
+      "stun",
+      "fear",
+      "polymorph",
+      "incapacitate",
+      "root",
+      "silence",
+      "slow",
+      "stealth",
+      "immunity",
+      "damage-reduction",
+      "evasion",
+      "cloak",
+    ].includes(effect.kind)
+  ) {
+    const status = effect.kind as Status;
+    applyControlStatus(
+      players,
+      sourceId,
+      target.id,
+      status,
+      ability,
+      effect.durationTicks ?? 0,
+      tick,
+      events,
+    );
   }
 }
 
@@ -901,18 +1143,29 @@ function applyControlStatus(
     "incapacitate",
     "root",
   ].includes(status);
-  const diminishingStatus: Status =
-    status === "incapacitate" ? "polymorph" : status;
+  const diminishingStatus: DiminishingCategory =
+    ability.id === "kidney-shot"
+      ? "kidney-shot"
+      : status === "incapacitate"
+        ? "polymorph"
+        : status;
   const prior = target.diminishingReturns?.[diminishingStatus];
   const count = prior && prior.resetsAt > tick ? prior.count : 0;
   if (isControl && count >= 3) return;
   const duration =
     ability.id === "kidney-shot"
-      ? ((source.comboPoints ?? 1) + 1) * 30
+      ? (source.comboPoints ?? 1) * TICKS_PER_SECOND
       : baseDuration;
   const until = tick + Math.floor(duration / (isControl ? 2 ** count : 1));
   players[target.id] = {
     ...target,
+    ...(status === "stealth"
+      ? {
+          autoAttackTargetId: undefined,
+          nextMainHandSwingTick: undefined,
+          nextOffHandSwingTick: undefined,
+        }
+      : {}),
     ...(status === "root" ? { rootFrostHits: 0 } : {}),
     ...(status === "fear" ? { fearSourceId: sourceId } : {}),
     ...(status === "polymorph"
@@ -932,6 +1185,10 @@ function applyControlStatus(
         }
       : {}),
     statuses: { ...target.statuses, [status]: until },
+    statusAbilities: {
+      ...target.statusAbilities,
+      [status]: { abilityId: ability.id, specId: source.specId },
+    },
   };
   if (ability.id === "kidney-shot")
     players[sourceId] = { ...players[sourceId]!, comboPoints: 0 };
@@ -944,14 +1201,173 @@ function applyControlStatus(
     text: `${target.name}: ${ability.name}`,
   });
 }
-function regenerate(players: Record<string, PlayerState>) {
+
+function performAutoAttacks(
+  players: Record<string, PlayerState>,
+  tick: number,
+  events: CombatEvent[],
+) {
+  const meleeRange = getAbility("subtlety-rogue", "hemorrhage")?.range ?? 0;
+  for (const original of Object.values(players)) {
+    if (
+      original.specId !== "subtlety-rogue" ||
+      !original.autoAttackTargetId ||
+      original.health <= 0
+    )
+      continue;
+    const target = players[original.autoAttackTargetId];
+    if (!target || target.health <= 0 || target.team === original.team) {
+      players[original.id] = {
+        ...original,
+        autoAttackTargetId: undefined,
+        nextMainHandSwingTick: undefined,
+        nextOffHandSwingTick: undefined,
+      };
+      continue;
+    }
+    if (
+      controlled(original, tick) ||
+      (original.statuses.stealth ?? 0) > tick ||
+      distance(original, target) > meleeRange ||
+      !hasLineOfSight(original, target)
+    )
+      continue;
+
+    if ((original.nextMainHandSwingTick ?? tick) <= tick)
+      performWeaponSwing(
+        players,
+        original.id,
+        target.id,
+        "auto-attack-main-hand",
+        115,
+        ROGUE_MAIN_HAND_SWING_TICKS,
+        tick,
+        events,
+      );
+    const afterMainHand = players[original.id];
+    if (
+      afterMainHand &&
+      players[target.id]!.health > 0 &&
+      (afterMainHand.nextOffHandSwingTick ?? tick) <= tick
+    )
+      performWeaponSwing(
+        players,
+        original.id,
+        target.id,
+        "auto-attack-off-hand",
+        35,
+        ROGUE_OFF_HAND_SWING_TICKS,
+        tick,
+        events,
+      );
+  }
+}
+
+function performWeaponSwing(
+  players: Record<string, PlayerState>,
+  sourceId: string,
+  targetId: string,
+  abilityId: "auto-attack-main-hand" | "auto-attack-off-hand",
+  baseDamage: number,
+  swingTicks: number,
+  tick: number,
+  events: CombatEvent[],
+) {
+  const source = players[sourceId];
+  const target = players[targetId];
+  if (!source || !target) return;
+  const damage =
+    (target.statuses.immunity ?? 0) > tick
+      ? 0
+      : Math.round(
+          baseDamage *
+            ((target.statuses.evasion ?? 0) > tick ? 0.5 : 1) *
+            ((target.statuses["damage-reduction"] ?? 0) > tick ? 0.6 : 1),
+        );
+  const absorbed = Math.min(target.shield, damage);
+  const effectiveDamage = Math.min(target.health, damage - absorbed);
+  const health = target.health - effectiveDamage;
+  players[sourceId] = {
+    ...source,
+    combatUntilTick: tick + COMBAT_DURATION_TICKS,
+    ...(abilityId === "auto-attack-main-hand"
+      ? { nextMainHandSwingTick: tick + swingTicks }
+      : { nextOffHandSwingTick: tick + swingTicks }),
+  };
+  players[targetId] = {
+    ...target,
+    health,
+    ...(effectiveDamage > 0
+      ? {
+          cast: applySpellPushback(target, tick, sourceId, abilityId),
+        }
+      : {}),
+    shield: target.shield - absorbed,
+    shieldAbility:
+      target.shield - absorbed > 0 ? target.shieldAbility : undefined,
+    combatUntilTick: tick + COMBAT_DURATION_TICKS,
+    statuses: {
+      ...target.statuses,
+      polymorph: undefined,
+      incapacitate: undefined,
+      stealth: undefined,
+    },
+  };
+  events.push({
+    tick,
+    type: "damage",
+    sourceId,
+    targetId,
+    abilityId,
+    amount: effectiveDamage,
+    text: `${source.name}'s ${abilityId === "auto-attack-main-hand" ? "main hand" : "off hand"} hit for ${effectiveDamage}`,
+  });
+  if (health === 0)
+    events.push({
+      tick,
+      type: "death",
+      sourceId,
+      targetId,
+      text: `${target.name} was defeated`,
+    });
+}
+
+function applySpellPushback(
+  target: PlayerState,
+  _tick: number,
+  _sourceId: string,
+  _attackId: string,
+): CastState | undefined {
+  const hasPushbackProtection =
+    target.shield > 0 &&
+    (target.shieldAbility?.abilityId === "ice-barrier" ||
+      target.shieldAbility?.abilityId === "power-word-shield");
+  if (
+    !target.cast ||
+    hasPushbackProtection ||
+    (target.cast.pushbackCount ?? 0) >= 2
+  )
+    return target.cast;
+  return {
+    ...target.cast,
+    completesAtTick: target.cast.completesAtTick + TICKS_PER_SECOND / 2,
+    pushbackCount: (target.cast.pushbackCount ?? 0) + 1,
+  };
+}
+
+function regenerate(players: Record<string, PlayerState>, tick: number) {
   for (const player of Object.values(players)) {
     const max = SPECS[player.specId].maxMana;
     players[player.id] = {
       ...player,
       mana: Math.min(
         max,
-        player.mana + (player.specId === "subtlety-rogue" ? 2 : 1),
+        player.mana +
+          (player.specId === "subtlety-rogue"
+            ? tick % ROGUE_ENERGY_TICK_INTERVAL === 0
+              ? ROGUE_ENERGY_PER_TICK
+              : 0
+            : 1),
       ),
     };
   }

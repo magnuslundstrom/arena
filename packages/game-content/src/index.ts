@@ -1,5 +1,6 @@
 export type SpecId = "frost-mage" | "subtlety-rogue" | "discipline-priest";
-export type AbilityTarget = "enemy" | "enemy-area" | "ally" | "self" | "point";
+export type AbilityTarget =
+  "enemy" | "enemy-area" | "enemy-cone" | "ally" | "any" | "self" | "point";
 export type EffectKind =
   | "damage"
   | "heal"
@@ -48,6 +49,8 @@ export interface SpecDefinition {
 }
 
 const s = (value: number) => value * 30;
+export const UNITS_PER_YARD = 700 / 36;
+const yards = (value: number) => Math.round(value * UNITS_PER_YARD);
 const a = (
   id: string,
   name: string,
@@ -77,36 +80,45 @@ export const SPECS: Readonly<Record<SpecId, SpecDefinition>> = {
     maxMana: 2800,
     speed: 11,
     abilities: [
-      a("frostbolt", "Frostbolt", "enemy", 1700, 0, 36, 120, [
+      a("frostbolt", "Frostbolt", "enemy", yards(40), 0, 36, 120, [
         { kind: "damage", amount: 260 },
         { kind: "slow", durationTicks: s(5) },
       ]),
-      a("ice-lance", "Ice Lance", "enemy", 1400, 0, 0, 80, [
-        { kind: "damage", amount: 120 },
+      a("ice-lance", "Ice Lance", "enemy", yards(30), 0, 0, 80, [
+        { kind: "damage", amount: 80 },
       ]),
-      a("polymorph", "Polymorph", "enemy", 1500, 0, 45, 160, [
+      a("polymorph", "Polymorph", "enemy", yards(30), 0, 45, 160, [
         { kind: "polymorph", durationTicks: s(8) },
       ]),
-      a("frost-nova", "Frost Nova", "enemy-area", 700, s(21), 0, 140, [
+      a("frost-nova", "Frost Nova", "enemy-area", yards(36), s(21), 0, 140, [
         { kind: "root", durationTicks: s(5) },
       ]),
-      a("blink", "Blink", "point", 650, s(15), 0, 100, [
-        { kind: "teleport", amount: 650 },
+      a("blink", "Blink", "point", yards(20), s(15), 0, 100, [
+        { kind: "teleport", amount: yards(20) },
       ]),
       a("ice-barrier", "Ice Barrier", "self", 0, s(30), 0, 180, [
         { kind: "shield", amount: 500 },
       ]),
-      a("counterspell", "Counterspell", "enemy", 1400, s(24), 0, 0, [
+      a("counterspell", "Counterspell", "enemy", yards(30), s(24), 0, 0, [
         { kind: "silence", durationTicks: s(4) },
       ]),
-      a("cone-of-cold", "Cone of Cold", "enemy", 650, s(10), 0, 130, [
-        { kind: "damage", amount: 180 },
-        { kind: "slow", durationTicks: s(5) },
-      ]),
+      a(
+        "cone-of-cold",
+        "Cone of Cold",
+        "enemy-cone",
+        yards(22),
+        s(10),
+        0,
+        130,
+        [
+          { kind: "damage", amount: 180 },
+          { kind: "slow", durationTicks: s(5) },
+        ],
+      ),
       a("cold-snap", "Cold Snap", "self", 0, s(120), 0, 0, [
         { kind: "reset-cooldowns" },
       ]),
-      a("fire-blast", "Fire Blast", "enemy", 1200, s(8), 0, 150, [
+      a("fire-blast", "Fire Blast", "enemy", yards(30), s(8), 0, 150, [
         { kind: "damage", amount: 210 },
       ]),
       a("ice-block", "Ice Block", "self", 0, s(240), 0, 0, [
@@ -123,23 +135,23 @@ export const SPECS: Readonly<Record<SpecId, SpecDefinition>> = {
     maxMana: 100,
     speed: 13,
     abilities: [
-      a("hemorrhage", "Hemorrhage", "enemy", 180, 0, 0, 25, [
+      a("hemorrhage", "Hemorrhage", "enemy", yards(5), 0, 0, 25, [
         { kind: "damage", amount: 150 },
       ]),
-      a("shadowstep", "Shadowstep", "enemy", 1000, s(30), 0, 10, [
+      a("shadowstep", "Shadowstep", "enemy", yards(25), s(30), 0, 10, [
         { kind: "teleport", amount: 100 },
       ]),
-      a("cheap-shot", "Cheap Shot", "enemy", 180, 0, 0, 40, [
+      a("cheap-shot", "Cheap Shot", "enemy", yards(5), 0, 0, 40, [
         { kind: "damage", amount: 70 },
-        { kind: "stun", durationTicks: s(4) },
+        { kind: "stun", durationTicks: s(3) },
       ]),
-      a("kidney-shot", "Kidney Shot", "enemy", 180, s(20), 0, 25, [
+      a("kidney-shot", "Kidney Shot", "enemy", yards(5), s(20), 0, 25, [
         { kind: "stun", durationTicks: s(5) },
       ]),
-      a("gouge", "Gouge", "enemy", 180, s(10), 0, 30, [
+      a("gouge", "Gouge", "enemy", yards(5), s(10), 0, 30, [
         { kind: "incapacitate", durationTicks: s(4) },
       ]),
-      a("kick", "Kick", "enemy", 180, s(10), 0, 25, [
+      a("kick", "Kick", "enemy", yards(5), s(10), 0, 25, [
         { kind: "silence", durationTicks: s(3) },
       ]),
       a("cloak-of-shadows", "Cloak of Shadows", "self", 0, s(60), 0, 0, [
@@ -152,7 +164,7 @@ export const SPECS: Readonly<Record<SpecId, SpecDefinition>> = {
       a("evasion", "Evasion", "self", 0, s(120), 0, 0, [
         { kind: "evasion", durationTicks: s(15) },
       ]),
-      a("eviscerate", "Eviscerate", "enemy", 180, 0, 0, 35, [
+      a("eviscerate", "Eviscerate", "enemy", yards(5), 0, 0, 35, [
         { kind: "damage", amount: 330 },
       ]),
       a("stealth", "Stealth", "self", 0, s(10), 0, 0, [
@@ -168,44 +180,68 @@ export const SPECS: Readonly<Record<SpecId, SpecDefinition>> = {
     maxMana: 3400,
     speed: 11,
     abilities: [
-      a("power-word-shield", "Power Word: Shield", "ally", 1500, s(4), 0, 180, [
-        { kind: "shield", amount: 450 },
-      ]),
-      a("flash-heal", "Flash Heal", "ally", 1500, 0, 30, 220, [
+      a(
+        "power-word-shield",
+        "Power Word: Shield",
+        "ally",
+        yards(30),
+        s(4),
+        0,
+        180,
+        [{ kind: "shield", amount: 450 }],
+      ),
+      a("flash-heal", "Flash Heal", "ally", yards(30), 0, 30, 220, [
         { kind: "heal", amount: 420 },
       ]),
-      a("renew", "Renew", "ally", 1500, 0, 0, 160, [
+      a("renew", "Renew", "ally", yards(30), 0, 0, 160, [
         { kind: "heal", amount: 230 },
       ]),
-      a("dispel-magic", "Dispel Magic", "ally", 1500, s(8), 0, 130, [
+      a("dispel-magic", "Dispel Magic", "any", yards(30), s(8), 0, 130, [
         { kind: "dispel" },
       ]),
-      a("mass-dispel", "Mass Dispel", "ally", 1500, s(15), 30, 280, [
-        { kind: "dispel" },
-        { kind: "shield", amount: 100 },
-      ]),
-      a("pain-suppression", "Pain Suppression", "ally", 1500, s(120), 0, 100, [
-        { kind: "damage-reduction", durationTicks: s(8) },
-      ]),
-      a("psychic-scream", "Psychic Scream", "enemy", 650, s(30), 0, 180, [
-        { kind: "fear", durationTicks: s(6) },
-      ]),
-      a("mana-burn", "Mana Burn", "enemy", 1500, 0, 60, 100, [
+      a(
+        "pain-suppression",
+        "Pain Suppression",
+        "ally",
+        yards(30),
+        s(120),
+        0,
+        100,
+        [{ kind: "damage-reduction", durationTicks: s(8) }],
+      ),
+      a(
+        "psychic-scream",
+        "Psychic Scream",
+        "enemy-area",
+        yards(22),
+        s(30),
+        0,
+        180,
+        [{ kind: "fear", durationTicks: s(6) }],
+      ),
+      a("mana-burn", "Mana Burn", "enemy", yards(30), 0, 60, 100, [
         { kind: "damage", amount: 180 },
       ]),
       a(
         "shadow-word-death",
         "Shadow Word: Death",
         "enemy",
-        1400,
+        yards(30),
         s(12),
         0,
         120,
         [{ kind: "damage", amount: 250 }],
       ),
-      a("prayer-of-mending", "Prayer of Mending", "ally", 1500, s(10), 0, 210, [
-        { kind: "heal", amount: 320 },
-      ]),
+      a(
+        "prayer-of-mending",
+        "Prayer of Mending",
+        "ally",
+        yards(30),
+        s(10),
+        0,
+        210,
+        [{ kind: "heal", amount: 320 }],
+      ),
     ],
   },
 };

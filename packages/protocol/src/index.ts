@@ -13,6 +13,9 @@ export const ClientHelloSchema = Type.Object(
     name: Type.String({ minLength: 1, maxLength: 18 }),
     specId: SpecIdSchema,
     practice: Type.Optional(Type.Boolean()),
+    roomId: Type.Optional(
+      Type.String({ minLength: 4, maxLength: 24, pattern: "^[a-zA-Z0-9-]+$" }),
+    ),
   },
   { additionalProperties: false },
 );
@@ -46,8 +49,27 @@ export const PlayerIntentSchema = Type.Object(
   },
   { additionalProperties: false },
 );
+export const ClientTeamSchema = Type.Object(
+  {
+    kind: Type.Literal("client.team"),
+    protocolVersion: Type.Literal(PROTOCOL_VERSION),
+    team: Type.Integer({ minimum: 0, maximum: 1 }),
+  },
+  { additionalProperties: false },
+);
+export const ClientAddBotSchema = Type.Object(
+  {
+    kind: Type.Literal("client.add-bot"),
+    protocolVersion: Type.Literal(PROTOCOL_VERSION),
+    team: Type.Integer({ minimum: 0, maximum: 1 }),
+    specId: SpecIdSchema,
+  },
+  { additionalProperties: false },
+);
 export const ClientMessageSchema = Type.Union([
   ClientHelloSchema,
+  ClientTeamSchema,
+  ClientAddBotSchema,
   PlayerIntentSchema,
 ]);
 export const ServerWelcomeSchema = Type.Object({
@@ -57,6 +79,8 @@ export const ServerWelcomeSchema = Type.Object({
   team: Type.Integer({ minimum: 0, maximum: 1 }),
 });
 export type ClientHello = Static<typeof ClientHelloSchema>;
+export type ClientTeam = Static<typeof ClientTeamSchema>;
+export type ClientAddBot = Static<typeof ClientAddBotSchema>;
 export type PlayerIntent = Static<typeof PlayerIntentSchema>;
 export type ClientMessage = Static<typeof ClientMessageSchema>;
 export type ServerWelcome = Static<typeof ServerWelcomeSchema>;

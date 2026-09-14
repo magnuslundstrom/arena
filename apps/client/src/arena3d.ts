@@ -28,11 +28,46 @@ interface ArenaUnit {
   mixer?: THREE.AnimationMixer;
   actions?: Map<string, THREE.AnimationAction>;
   currentAction?: string;
+  stealthed?: boolean;
 }
 
 interface CharacterAsset {
   scene: THREE.Group;
   animations: THREE.AnimationClip[];
+}
+
+const STEALTH_OPACITY = 0.38;
+
+function setUnitStealthed(unit: ArenaUnit, stealthed: boolean) {
+  if (unit.stealthed === stealthed) return;
+  unit.stealthed = stealthed;
+  unit.humanoid.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(object.material)
+      ? object.material
+      : [object.material];
+    for (const material of materials) {
+      const original = material.userData.stealthOriginal as
+        | { opacity: number; transparent: boolean; depthWrite: boolean }
+        | undefined;
+      if (stealthed) {
+        material.userData.stealthOriginal ??= {
+          opacity: material.opacity,
+          transparent: material.transparent,
+          depthWrite: material.depthWrite,
+        };
+        material.transparent = true;
+        material.opacity = STEALTH_OPACITY;
+        material.depthWrite = false;
+      } else if (original) {
+        material.opacity = original.opacity;
+        material.transparent = original.transparent;
+        material.depthWrite = original.depthWrite;
+      }
+      material.needsUpdate = true;
+    }
+    object.castShadow = !stealthed;
+  });
 }
 
 function playAnimation(unit: ArenaUnit, name: string) {
@@ -86,6 +121,7 @@ export function mountArena(
   read: () => MatchState | undefined,
   selfId: () => string | undefined,
   select: (id: string) => void,
+  playground = false,
 ) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -131,44 +167,54 @@ export function mountArena(
   }
   mesh(
     new THREE.BoxGeometry(80, 1, 48),
-    new THREE.MeshStandardMaterial({ color: 0x242729, roughness: 1 }),
+    new THREE.MeshStandardMaterial({
+      color: playground ? 0x5b5036 : 0x242729,
+      roughness: 1,
+    }),
     40,
     -0.5,
     24,
   );
-  const disposeEnvironment = mountArenaEnvironment(scene);
-  for (const p of PILLARS) {
-    mesh(
-      new THREE.CylinderGeometry(p.radius / 25, p.radius / 25, 7, 12),
-      stone,
-      p.x / 25,
-      3.5,
-      p.y / 25,
-    );
-    mesh(
-      new THREE.CylinderGeometry(
-        p.radius / 25 + 0.4,
-        p.radius / 25 + 0.4,
-        0.65,
-        12,
-      ),
-      stone,
-      p.x / 25,
-      7,
-      p.y / 25,
-    );
-    mesh(
-      new THREE.CylinderGeometry(
-        p.radius / 25 + 0.5,
-        p.radius / 25 + 0.5,
-        0.6,
-        12,
-      ),
-      stone,
-      p.x / 25,
-      0.3,
-      p.y / 25,
-    );
+  const disposeEnvironment = mountArenaEnvironment(scene, { playground });
+  if (!playground)
+    for (const p of PILLARS) {
+      mesh(
+        new THREE.CylinderGeometry(p.radius / 25, p.radius / 25, 7, 12),
+        stone,
+        p.x / 25,
+        3.5,
+        p.y / 25,
+      );
+      mesh(
+        new THREE.CylinderGeometry(
+          p.radius / 25 + 0.4,
+          p.radius / 25 + 0.4,
+          0.65,
+          12,
+        ),
+        stone,
+        p.x / 25,
+        7,
+        p.y / 25,
+      );
+      mesh(
+        new THREE.CylinderGeometry(
+          p.radius / 25 + 0.5,
+          p.radius / 25 + 0.5,
+          0.6,
+          12,
+        ),
+        stone,
+        p.x / 25,
+        0.3,
+        p.y / 25,
+      );
+    }
+  if (playground) {
+    const laneMaterial = new THREE.MeshBasicMaterial({ color: 0xb59b58 });
+    for (const z of [12, 24, 36])
+      mesh(new THREE.BoxGeometry(68, 0.025, 0.08), laneMaterial, 40, 0.025, z);
+    mesh(new THREE.BoxGeometry(0.12, 0.03, 42), laneMaterial, 66, 0.03, 24);
   }
   for (const z of [0, 48])
     mesh(new THREE.BoxGeometry(80, 3, 1), stone, 40, 1.5, z);
@@ -182,11 +228,15 @@ export function mountArena(
   const characterAssets = new Map<string, CharacterAsset>();
   let disposed = false;
   function attachCharacter(unit: ArenaUnit) {
+    if (unit.group.userData.trainingDummy) return;
     const asset = characterAssets.get(unit.specId);
     if (!asset || unit.mixer) return;
     const model = cloneSkeleton(asset.scene);
     model.traverse((object) => {
       if (object instanceof THREE.Mesh) {
+        object.material = Array.isArray(object.material)
+          ? object.material.map((material) => material.clone())
+          : object.material.clone();
         object.castShadow = true;
         object.receiveShadow = true;
       }
@@ -198,6 +248,10 @@ export function mountArena(
     model.position.y = -bounds.min.y * scale;
     unit.humanoid.add(model);
     unit.proxy.visible = false;
+    if (unit.stealthed) {
+      delete unit.stealthed;
+      setUnitStealthed(unit, true);
+    }
     unit.mixer = new THREE.AnimationMixer(model);
     unit.actions = new Map(
       asset.animations.map((clip) => [clip.name, unit.mixer!.clipAction(clip)]),
@@ -323,6 +377,7 @@ export function mountArena(
         if (!unit) {
           const group = new THREE.Group();
           group.userData.playerId = p.id;
+          group.userData.trainingDummy = p.id.startsWith("dummy-");
           scene.add(group);
           const humanoid = new THREE.Group();
           group.add(humanoid);
@@ -664,7 +719,71 @@ export function mountArena(
             rootIce,
           };
           units.set(p.id, unit);
-          attachCharacter(unit);
+          if (group.userData.trainingDummy) {
+            proxy.clear();
+            const wood = new THREE.MeshStandardMaterial({
+              color: p.id === "dummy-leather" ? 0x765038 : 0x9a7246,
+              roughness: 0.95,
+            });
+            const iron = new THREE.MeshStandardMaterial({
+              color: 0x4a5054,
+              metalness: 0.65,
+              roughness: 0.55,
+            });
+            mesh(
+              new THREE.CylinderGeometry(0.13, 0.18, 2.45, 8),
+              wood,
+              0,
+              1.22,
+              0,
+              proxy,
+            );
+            mesh(
+              new THREE.BoxGeometry(1.35, 0.16, 0.16),
+              wood,
+              0,
+              1.72,
+              0,
+              proxy,
+            );
+            if (p.id === "dummy-cloth")
+              mesh(
+                new THREE.CylinderGeometry(0.58, 0.58, 0.18, 20),
+                iron,
+                0,
+                1.82,
+                0,
+                proxy,
+              ).rotation.x = Math.PI / 2;
+            else if (p.id === "dummy-leather")
+              mesh(
+                new THREE.BoxGeometry(0.95, 1.05, 0.22),
+                iron,
+                0,
+                1.55,
+                0,
+                proxy,
+              );
+            else {
+              const target = mesh(
+                new THREE.OctahedronGeometry(0.72, 0),
+                iron,
+                0,
+                1.72,
+                0,
+                proxy,
+              );
+              target.scale.y = 1.2;
+            }
+            mesh(
+              new THREE.CylinderGeometry(0.72, 0.9, 0.18, 12),
+              wood,
+              0,
+              0.09,
+              0,
+              proxy,
+            );
+          } else attachCharacter(unit);
         }
         const polymorphed =
           p.health > 0 && (p.statuses.polymorph ?? 0) > state.tick;
@@ -673,6 +792,12 @@ export function mountArena(
         const incapacitated =
           p.health > 0 && (p.statuses.incapacitate ?? 0) > state.tick;
         const rooted = p.health > 0 && (p.statuses.root ?? 0) > state.tick;
+        const stealthed =
+          p.health > 0 &&
+          p.specId === "subtlety-rogue" &&
+          p.team === me?.team &&
+          (p.statuses.stealth ?? 0) > state.tick;
+        setUnitStealthed(unit, stealthed);
         const jumping =
           p.jumpStartedTick !== undefined &&
           p.jumpUntilTick !== undefined &&
@@ -690,6 +815,7 @@ export function mountArena(
         else unit.group.position.lerp(destination, 1 - Math.exp(-18 * dt));
         if (motion.length() > 0.02)
           unit.group.rotation.y = Math.atan2(motion.x, motion.z);
+        else unit.group.rotation.y = Math.atan2(p.facingX, p.facingY);
         unit.humanoid.visible = !polymorphed;
         unit.humanoid.position.y = stunned ? -0.12 : 0;
         unit.humanoid.rotation.z = incapacitated

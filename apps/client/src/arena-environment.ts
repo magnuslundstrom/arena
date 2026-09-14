@@ -29,12 +29,21 @@ function prepare(model: THREE.Group, receiveShadow = true) {
 }
 
 /** Authored presentation shell. Simulation collision remains in arena3d. */
-export function mountArenaEnvironment(scene: THREE.Scene) {
+export function mountArenaEnvironment(
+  scene: THREE.Scene,
+  options: { playground?: boolean } = {},
+) {
   const root = new THREE.Group();
   root.name = "authored-arena-environment";
   scene.add(root);
   const loader = new GLTFLoader();
   let disposed = false;
+
+  if (options.playground)
+    return () => {
+      disposed = true;
+      root.removeFromParent();
+    };
 
   function load(path: string, build: (model: THREE.Group) => void) {
     loader.load(path, (asset) => {
